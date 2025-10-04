@@ -60,3 +60,16 @@ def test_unroll_slices(project: Project, tmp_path: pathlib.Path) -> None:
     r1 = project.get_resource("unittest::Resource", name="test:s1.yaml")
     assert r1 is not None
     assert r1.desired_value == '{"a": 0}'
+
+    # Add some another slice to the folder
+    s2 = store.path / "s2.yaml"
+    s2.write_text(yaml.safe_dump({"a": 1}))
+
+    # Compile should still work, slices should be differentiated
+    project.compile(model, no_dedent=False)
+    r1 = project.get_resource("unittest::Resource", name="test:s1.yaml")
+    assert r1 is not None
+    assert r1.desired_value == '{"a": 0}'
+    r2 = project.get_resource("unittest::Resource", name="test:s2.yaml")
+    assert r2 is not None
+    assert r2.desired_value == '{"a": 1}'
