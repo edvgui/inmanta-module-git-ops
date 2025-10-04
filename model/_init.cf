@@ -23,7 +23,9 @@ entity Slice extends std::Dataclass:
     """
     string identifier
     string store_name
+    int version
     dict attributes
+    bool deleted
 end
 
 implement Slice using std::none

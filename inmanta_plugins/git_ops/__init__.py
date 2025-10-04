@@ -16,17 +16,22 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 
+import typing
 from dataclasses import dataclass
 
 from inmanta.plugins import plugin
 from inmanta.util import dict_path
+
+type CompileMode = typing.Literal["activate", "export"]
 
 
 @dataclass(frozen=True, kw_only=True)
 class Slice:
     identifier: str
     store_name: str
+    version: int
     attributes: dict
+    deleted: bool = False
 
 
 @plugin
