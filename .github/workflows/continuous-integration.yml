@@ -1,0 +1,49 @@
+name: Integration tests
+
+on:
+  push:
+  schedule:
+    - cron:  '0 5 * * *'
+
+jobs:
+  linting:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+          architecture: 'x64'
+      - name: Install module and its dependencies
+        run: |
+          python3.12 -m venv venv
+          venv/bin/pip install -U pip -r requirements.dev.txt -e . -c requirements.txt
+          venv/bin/pip list | grep inmanta
+      - name: Lint with flake8
+        run: |
+          venv/bin/flake8 tests inmanta_plugins
+          venv/bin/pyupgrade --py312-plus $(find inmanta_plugins tests -type f -name '*.py')
+
+  tests:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+          architecture: 'x64'
+      - name: Install module and its dependencies
+        run: |
+          python3.12 -m venv venv
+          venv/bin/pip install -U pip -r requirements.dev.txt -e . -c requirements.txt
+          venv/bin/pip list | grep inmanta
+      - name: Run tests
+        run: |
+          echo $UID > /proc/self/loginuid
+          venv/bin/pytest tests -vvv --log-cli-level debug

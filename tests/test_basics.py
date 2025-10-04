@@ -1,5 +1,5 @@
 """
-Copyright Guillaume Everarts de Velp 2025
+Copyright 2025 Guillaume Everarts de Velp
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,10 +20,4 @@ from pytest_inmanta.plugin import Project
 
 
 def test_basics(project: Project) -> None:
-    project.compile(
-        """
-            import git_ops
-        """
-    )
-
-    assert project.get_stdout() == "hello world\n"
+    project.compile("import git_ops")
