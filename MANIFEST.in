@@ -1,0 +1,10 @@
+include inmanta_plugins/git_ops/setup.cfg
+include inmanta_plugins/git_ops/py.typed
+recursive-include inmanta_plugins/git_ops/model *.cf
+graft inmanta_plugins/git_ops/files
+graft inmanta_plugins/git_ops/templates
+graft docs
+graft examples
+graft tests
+include README.md
+include CHANGELOG.md
