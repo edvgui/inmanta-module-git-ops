@@ -514,6 +514,12 @@ def merge_attributes(
             merged[k] = c
             continue
 
+        if len(p) == 0:
+            # No previous values, whatever we have for current is all we
+            # have
+            merged[k] = c
+            continue
+
         if c is None:
             # Current state is either a None primitive, or a removed
             # value that a previous state still has.
@@ -523,6 +529,7 @@ def merge_attributes(
                 previous_dicts = pydantic.TypeAdapter(list[dict]).validate_python(p)
                 if len(previous_dicts) == 1:
                     v = dict(previous_dicts[0])
+                    v["_path"] = str(path + dict_path.InDict(k))
                 else:
                     v = merge_attributes(
                         current=dict(previous_dicts[0]),
@@ -546,4 +553,5 @@ def merge_attributes(
             path=path + dict_path.InDict(k),
         )
 
+    merged["_path"] = str(path)
     return merged
