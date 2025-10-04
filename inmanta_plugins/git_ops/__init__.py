@@ -15,3 +15,73 @@ limitations under the License.
 
 Contact: edvgui@gmail.com
 """
+
+from dataclasses import dataclass
+
+from inmanta.plugins import plugin
+from inmanta.util import dict_path
+
+
+@dataclass(frozen=True, kw_only=True)
+class Slice:
+    identifier: str
+    store_name: str
+    attributes: dict
+
+
+@plugin
+def unroll_slices(
+    store_name: str,
+) -> list[Slice]:
+    """
+    Find all the slices defined in the given folder, return them in a list
+    of dicts.  The files are expected to be valid yaml files.
+    """
+    from inmanta_plugins.git_ops import store
+
+    return store.get_store(store_name).get_all_slices()
+
+
+@plugin
+def get_slice_attribute(
+    store_name: str,
+    identifier: str,
+    path: str,
+) -> object:
+    """
+    Get an attribute of a slice at a given path.  The path should be a valid
+    dict path expression.
+
+    :param store_name: The name of the store in which the slice is defined.
+    :param identifier: The identifier of the slice within the store.
+    :param path: The path within the slice's attributes towards the value that
+        should be fetched.
+    """
+    from inmanta_plugins.git_ops import store
+
+    slice = store.get_store(store_name).get_one_slice(identifier)
+    return dict_path.to_path(path).get_element(slice.attributes)
+
+
+@plugin
+def update_slice_attribute(
+    store_name: str,
+    identifier: str,
+    path: str,
+    value: object,
+) -> object:
+    """
+    Update the content of a slice at a given path.  The path should be a valid
+    dict path expression.
+
+    :param store_name: The name of the store in which the slice is defined.
+    :param identifier: The identifier of the slice within the store.
+    :param path: The path within the slice's attributes towards the value that
+        should be updated.
+    :param value: The value that should be inserted into the slice attributes.
+    """
+    from inmanta_plugins.git_ops import store
+
+    slice = store.get_store(store_name).get_one_slice(identifier)
+    dict_path.to_path(path).set_element(slice.attributes, value)
+    return value

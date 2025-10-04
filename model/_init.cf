@@ -15,3 +15,15 @@
 
     Contact: edvgui@gmail.com
 """
+
+
+entity Slice extends std::Dataclass:
+    """
+    Entity representing a slice that can be fetched from a file.
+    """
+    string identifier
+    string store_name
+    dict attributes
+end
+
+implement Slice using std::none
