@@ -15,6 +15,3 @@
 
     Contact: edvgui@gmail.com
 """
-greeting = hello("world")
-
-std::print(greeting)
