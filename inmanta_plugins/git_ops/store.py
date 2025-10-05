@@ -20,7 +20,6 @@ import collections
 import json
 import pathlib
 import re
-import typing
 from dataclasses import dataclass
 
 import pydantic
@@ -35,9 +34,6 @@ from inmanta_plugins.git_ops import Slice, const
 # Dict registering all the slice stores when they are being created
 # This allows to find the store back, to access its slices.
 SLICE_STORE_REGISTRY: dict[str, "SliceStore"] = {}
-
-
-type FileFormat = typing.Literal["json", "yaml"]
 
 
 @dataclass(frozen=True, kw_only=True)
