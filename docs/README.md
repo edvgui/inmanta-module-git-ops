@@ -33,3 +33,7 @@ The end user workflow when creating changes is then:
 6. (Optional) Push the branch to the remote repo, run ci, get reviews, etc.
 7. Merge the branch into master.
 8. Update and recompile on the orchestrator to get the latest version of the project.  (**export** compile done by the orchestrator)
+
+### Multi-version
+
+In order to keep track of deleted items in a service, the slices emitted in the model don't limit themselves to the attributes contained in the source slice files.  The active store can contain multiple versions of a slice, which allows us to compare the latest version with the previous, and see which elements where deleted.  When a piece of a slice is deleted from the source file, it will be available in the model still, marked as `purged`.  This allows the model to purge the related resources, making sure the automation doesn't leave anything behind.
