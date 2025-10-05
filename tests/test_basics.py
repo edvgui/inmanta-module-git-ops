@@ -41,12 +41,26 @@ def test_unroll_slices(
 
     model = """
         import git_ops
+        import git_ops::processors
         import unittest
 
         for slice in git_ops::unroll_slices("test"):
             unittest::Resource(
                 name=slice.store_name + ":" + slice.name,
-                desired_value=std::json_dumps(slice.attributes),
+                desired_value=std::json_dumps(
+                    {
+                        "a": slice.attributes["a"],
+                        "b": git_ops::processors::unique_integer(
+                            slice.store_name,
+                            slice.name,
+                            "b",
+                            used_integers=git_ops::processors::used_values(
+                                slice.store_name,
+                                "b",
+                            ),
+                        ),
+                    },
+                ),
             )
         end
     """
@@ -70,7 +84,7 @@ def test_unroll_slices(
     assert not s1_v1.exists()
     r1 = project.get_resource("unittest::Resource", name="test:s1")
     assert r1 is not None
-    assert r1.desired_value == '{"a": 0, "_path": "."}'
+    assert r1.desired_value == '{"a": 0, "b": 0}'
 
     # Add some another slice to the folder
     s2 = store.source_path / "s2.yaml"
@@ -86,11 +100,13 @@ def test_unroll_slices(
     assert not s1_v1.exists()
     r1 = project.get_resource("unittest::Resource", name="test:s1")
     assert r1 is not None
-    assert r1.desired_value == '{"a": 0, "_path": "."}'
+    assert r1.desired_value == '{"a": 0, "b": 0}'
+    assert yaml.safe_load(s1.read_text()) == {"a": 0, "b": 0}
     assert not s2_v1.exists()
     r2 = project.get_resource("unittest::Resource", name="test:s2")
     assert r2 is not None
-    assert r2.desired_value == '{"a": 1, "_path": "."}'
+    assert r2.desired_value == '{"a": 1, "b": 1}'
+    assert yaml.safe_load(s2.read_text()) == {"a": 1, "b": 1}
 
     # Nothing has been synced, exporting compile should not have any resource
     project.compile(model, no_dedent=False)
@@ -144,7 +160,9 @@ def test_unroll_slices(
     assert s1_v2.exists()
     r1 = project.get_resource("unittest::Resource", name="test:s1")
     assert r1 is not None
+    assert r1.desired_value == '{"a": 1, "b": None}'
     assert s2_v1.exists()
     assert not s2_v2.exists()
     r2 = project.get_resource("unittest::Resource", name="test:s2")
     assert r2 is not None
+    assert r1.desired_value == '{"a": 1, "b": 1}'

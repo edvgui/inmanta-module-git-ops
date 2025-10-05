@@ -468,6 +468,52 @@ class SliceStore:
 
         return slices[name]
 
+    def set_slice_attribute[T: object](
+        self,
+        name: str,
+        path: dict_path.DictPath,
+        value: T,
+    ) -> T:
+        """
+        Update the attributes of the given slice in the source slice.
+        If the compile is not an update compile, raise an exception.
+
+        :param name: The name of the slice.
+        :param path: The path withing the slice towards the attribute
+            that should be set.
+        :param value: The value that the attribute should be set to.
+        """
+        if const.COMPILE_MODE != const.COMPILE_UPDATE:
+            raise RuntimeError(
+                f"Slice attributes can only be updated during {const.COMPILE_UPDATE} compiles"
+            )
+
+        path.set_element(self.load_source_slices()[name].attributes, value)
+        path.set_element(self.get_one_slice(name).attributes, value)
+        return value
+
+    def get_slice_attribute[T: object](
+        self,
+        name: str,
+        path: dict_path.DictPath,
+        *,
+        default: T | None = None,
+    ) -> T | None:
+        """
+        Get a slice attribute value located at the given path within the
+        designated slice.
+
+        :param name: The name of the slice.
+        :param path: The path within the slice towards the attribute that
+            should be fetched.
+        :param default: The default value to return if the attribute doesn't
+            exist in the slice.
+        """
+        try:
+            return path.get_element(self.get_one_slice(name).attributes)
+        except LookupError:
+            return default
+
 
 def get_store(store_name: str) -> SliceStore:
     """

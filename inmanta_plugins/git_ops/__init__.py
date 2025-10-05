@@ -16,10 +16,11 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 
+import functools
 import typing
 from dataclasses import dataclass
 
-from inmanta.plugins import plugin
+from inmanta.plugins import Plugin, plugin
 from inmanta.util import dict_path
 
 type CompileMode = typing.Literal["update", "sync", "export"]
@@ -64,8 +65,9 @@ def get_slice_attribute(
     """
     from inmanta_plugins.git_ops import store
 
-    slice = store.get_store(store_name).get_one_slice(name)
-    return dict_path.to_path(path).get_element(slice.attributes)
+    return store.get_store(store_name).get_slice_attribute(
+        name, dict_path.to_path(path)
+    )
 
 
 @plugin
@@ -87,6 +89,106 @@ def update_slice_attribute(
     """
     from inmanta_plugins.git_ops import store
 
-    slice = store.get_store(store_name).get_one_slice(name)
-    dict_path.to_path(path).set_element(slice.attributes, value)
-    return value
+    return store.get_store(store_name).set_slice_attribute(
+        name, dict_path.to_path(path), value
+    )
+
+
+class AttributeProcessorFunction[**P, R](typing.Protocol):
+    """
+    Define the interface that processor functions must implement.
+    """
+
+    def __call__(
+        self,
+        store_name: str,
+        name: str,
+        path: str,
+        previous_value: R | None,
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ) -> R:
+        pass
+
+
+def attribute_processor[F: AttributeProcessorFunction](func: F) -> F:
+    """
+    Register a function as an attribute processor.  Attribute processors are
+    called during update compile to process the value of a slice attribute and
+    potentially change it.  The value returned by the processor is saved back
+    into the slice at the end of the compile.  For non-update compiles, the
+    function calls are by-passed and the value of the slice is returned as is.
+
+    .. code-block:: python
+
+        @attribute_processor
+        def upper(
+            store_name: str,
+            name: str,
+            path: str,
+            previous_value: str | None,
+        ) -> str | None:
+            if previous_value is not None:
+                return previous_value.upper()
+            else:
+                return None
+
+    :param func: The processor function to register and wrap.
+    """
+    from inmanta_plugins.git_ops import const
+
+    # Make sure that the inmanta compiler sees this wrapped function the same way
+    # as the plugin it wraps, with its annotations and defaults
+    @functools.wraps(
+        wrapped=func,
+        assigned=(*functools.WRAPPER_ASSIGNMENTS, "__defaults__", "__kwdefaults__"),
+    )
+    def wrapped(
+        self: Plugin,
+        store_name: str,
+        name: str,
+        path: str,
+        previous_value: object,
+        *args: object,
+        **kwargs: object,
+    ) -> object:
+        """
+        Wrapper function, getting the value from the slice and, if this is an
+        update compile, also call the processor function and return its result.
+
+        :param store_name: The name of the slice store in which the slice is.
+        :param name: The name of the slice.
+        :param path: The path within the slice's attributes towards the value that
+            should be updated.
+        :param previous_value: The value that is currently in the slice for the
+            given attribute.
+        """
+        # Get the value that is currently set in the slice
+        previous_value = get_slice_attribute(store_name, name, path)
+
+        if const.COMPILE_MODE != const.COMPILE_UPDATE:
+            # The slice can not be updated, we keep whatever value we have
+            return previous_value
+
+        # Call the processor and set the new value in the slice
+        return update_slice_attribute(
+            store_name,
+            name,
+            path,
+            func(
+                store_name,
+                name,
+                path,
+                previous_value,
+                *args,
+                **kwargs,
+            ),
+        )
+
+    # Register the original plugin
+    plugin(func)
+
+    # Overwrite the call method of the plugin with our wrapper
+    func.__plugin__.call = wrapped  # type: ignore
+
+    return wrapped
