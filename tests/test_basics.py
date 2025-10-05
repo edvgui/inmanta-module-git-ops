@@ -149,7 +149,7 @@ def test_unroll_slices(
     assert r2 is not None
 
     # Update first slice
-    s1.write_text(yaml.safe_dump({"a": 1}))
+    s1.write_text(yaml.safe_dump({"a": 1, "b": 0}))
 
     # Sync changes
     with monkeypatch.context() as ctx:
@@ -160,9 +160,9 @@ def test_unroll_slices(
     assert s1_v2.exists()
     r1 = project.get_resource("unittest::Resource", name="test:s1")
     assert r1 is not None
-    assert r1.desired_value == '{"a": 1, "b": None}'
+    assert r1.desired_value == '{"a": 1, "b": 0}'
     assert s2_v1.exists()
     assert not s2_v2.exists()
     r2 = project.get_resource("unittest::Resource", name="test:s2")
     assert r2 is not None
-    assert r1.desired_value == '{"a": 1, "b": 1}'
+    assert r2.desired_value == '{"a": 1, "b": 1}'
