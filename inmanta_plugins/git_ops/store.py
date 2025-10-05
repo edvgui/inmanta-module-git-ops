@@ -363,18 +363,35 @@ class SliceStore:
             else:
                 current = self.get_latest_slice(slice)
 
-            previous = active_slices.get(slice, [])
+            previous = sorted(
+                active_slices.get(slice, []),
+                key=lambda s: s.version,
+                reverse=True,
+            )
+
+            if current.deleted:
+                # We need to get the attributes of the last undeleted
+                # version, otherwise we don't know what we have to delete
+                attributes = merge_attributes(
+                    current=previous[0].attributes,
+                    previous=[p.attributes for p in previous[1:]],
+                    path=dict_path.NullPath(),
+                )
+                attributes["_purged"] = True
+            else:
+                # Normal merge
+                attributes = merge_attributes(
+                    current=current.attributes,
+                    previous=[p.attributes for p in previous],
+                    path=dict_path.NullPath(),
+                )
 
             # Merge the current and previous slices together
             self.slices[slice] = Slice(
                 name=slice,
                 store_name=self.name,
                 version=current.version,
-                attributes=merge_attributes(
-                    current=current.attributes,
-                    previous=[p.attributes for p in previous],
-                    path=dict_path.NullPath(),
-                ),
+                attributes=attributes,
                 deleted=current.deleted,
             )
 

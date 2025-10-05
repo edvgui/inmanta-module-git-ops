@@ -45,20 +45,25 @@ def test_unroll_slices(
         import unittest
 
         for slice in git_ops::unroll_slices("test"):
+            b = "_purged" in slice.attributes
+                ? slice.attributes["b"]
+                : git_ops::processors::unique_integer(
+                    slice.store_name,
+                    slice.name,
+                    "b",
+                    used_integers=git_ops::processors::used_values(
+                        slice.store_name,
+                        "b",
+                    ),
+                )
+
             unittest::Resource(
                 name=slice.store_name + ":" + slice.name,
                 desired_value=std::json_dumps(
                     {
                         "a": slice.attributes["a"],
-                        "b": git_ops::processors::unique_integer(
-                            slice.store_name,
-                            slice.name,
-                            "b",
-                            used_integers=git_ops::processors::used_values(
-                                slice.store_name,
-                                "b",
-                            ),
-                        ),
+                        "b": b,
+                        "_purged": "_purged" in slice.attributes,
                     },
                 ),
             )
@@ -84,7 +89,7 @@ def test_unroll_slices(
     assert not s1_v1.exists()
     r1 = project.get_resource("unittest::Resource", name="test:s1")
     assert r1 is not None
-    assert r1.desired_value == '{"a": 0, "b": 0}'
+    assert r1.desired_value == '{"a": 0, "b": 0, "_purged": false}'
 
     # Add some another slice to the folder
     s2 = store.source_path / "s2.yaml"
@@ -100,12 +105,12 @@ def test_unroll_slices(
     assert not s1_v1.exists()
     r1 = project.get_resource("unittest::Resource", name="test:s1")
     assert r1 is not None
-    assert r1.desired_value == '{"a": 0, "b": 0}'
+    assert r1.desired_value == '{"a": 0, "b": 0, "_purged": false}'
     assert yaml.safe_load(s1.read_text()) == {"a": 0, "b": 0}
     assert not s2_v1.exists()
     r2 = project.get_resource("unittest::Resource", name="test:s2")
     assert r2 is not None
-    assert r2.desired_value == '{"a": 1, "b": 1}'
+    assert r2.desired_value == '{"a": 1, "b": 1, "_purged": false}'
     assert yaml.safe_load(s2.read_text()) == {"a": 1, "b": 1}
 
     # Nothing has been synced, exporting compile should not have any resource
@@ -160,9 +165,25 @@ def test_unroll_slices(
     assert s1_v2.exists()
     r1 = project.get_resource("unittest::Resource", name="test:s1")
     assert r1 is not None
-    assert r1.desired_value == '{"a": 1, "b": 0}'
+    assert r1.desired_value == '{"a": 1, "b": 0, "_purged": false}'
     assert s2_v1.exists()
     assert not s2_v2.exists()
     r2 = project.get_resource("unittest::Resource", name="test:s2")
     assert r2 is not None
-    assert r2.desired_value == '{"a": 1, "b": 1}'
+    assert r2.desired_value == '{"a": 1, "b": 1, "_purged": false}'
+
+    # Delete a slice
+    s1.unlink()
+    s1_v3 = store.active_path / "s1@v3.json"
+
+    # Sync changes
+    with monkeypatch.context() as ctx:
+        ctx.setattr(const, "COMPILE_MODE", const.COMPILE_SYNC)
+        project.compile(model, no_dedent=False)
+
+    assert s1_v1.exists()
+    assert s1_v2.exists()
+    assert s1_v3.exists()
+    r1 = project.get_resource("unittest::Resource", name="test:s1")
+    assert r1 is not None
+    assert r1.desired_value == '{"a": 1, "b": 0, "_purged": true}'
