@@ -137,7 +137,7 @@ class SliceFile:
         :param file: The path to a file whose name we want to parse.
         """
         matched = re.fullmatch(
-            r"(?P<name>.*)(\@v(?P<version>\d+))?\.(?P<extension>[a-z]+)",
+            r"(?P<name>[^@]+)(\@v(?P<version>\d+))?\.(?P<extension>[a-z]+)",
             str(file.name),
         )
         if not matched:
@@ -355,14 +355,14 @@ class SliceStore:
         active_slices = self.load_active_slices()
 
         slices = set(active_slices.keys())
-        if const.COMPILE_MODE == "activate":
+        if const.COMPILE_MODE in [const.COMPILE_UPDATE, const.COMPILE_SYNC]:
             # Activating compile, we need to look at the source of the
             # slices too
             slices |= self.load_source_slices().keys()
 
         self.slices: dict[str, Slice] = {}
         for slice in slices:
-            if const.COMPILE_MODE == "activate":
+            if const.COMPILE_MODE in [const.COMPILE_UPDATE, const.COMPILE_SYNC]:
                 current = self.load_source_slices()[slice]
             else:
                 current = self.get_latest_slice(slice)
@@ -384,18 +384,33 @@ class SliceStore:
 
         return self.slices
 
-    def activate(self) -> None:
+    def sync(self) -> None:
         """
         Activate all the source slices.  For each source slice whose version is
         not present in the active store, add them there and save them to file.
         """
-        if const.COMPILE_MODE != "activate":
+        if const.COMPILE_MODE != const.COMPILE_SYNC:
             raise RuntimeError(
                 "Source slices can only be activated during an activating compile"
             )
 
         if self.source_slices is None:
             return
+
+        # Validate that none of the source slices has changed
+        changed: list[Slice] = []
+        for name, slice_file in self.load_source_slice_files().items():
+            slice = self.source_slices[name]
+            if slice_file.read() != slice.attributes:
+                # Changed detected for a slice, register the change and save it to file so it is not lost
+                changed.append(slice)
+                slice_file.write(slice.attributes)
+
+        if changed:
+            changed_slices = [s.identifier for s in changed]
+            raise RuntimeError(
+                f"Sync blocked: some slices still contained some change: {changed_slices}"
+            )
 
         for slice in self.source_slices.values():
             # The slice can be activated, create the file, then save the slice content
@@ -408,7 +423,7 @@ class SliceStore:
             )
             slice_file.write(slice.attributes)
 
-    def save(self) -> None:
+    def update(self) -> None:
         """
         Save all the source slices in the store back to file.
         """
@@ -474,7 +489,12 @@ def persist_store() -> None:
     the in-memory cache.
     """
     for store in SLICE_STORE_REGISTRY.values():
-        store.save()
+        if const.COMPILE_MODE == const.COMPILE_UPDATE:
+            store.update()
+        elif const.COMPILE_MODE == const.COMPILE_SYNC:
+            store.sync()
+        else:
+            pass
         store.clear()
 
 

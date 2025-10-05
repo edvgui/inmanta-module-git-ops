@@ -22,8 +22,12 @@ import pydantic
 
 from inmanta_plugins.git_ops import CompileMode
 
+COMPILE_UPDATE = "update"
+COMPILE_SYNC = "sync"
+COMPILE_EXPORT = "export"
+
 COMPILE_MODE_ENV_VAR = "INMANTA_GIT_OPS_COMPILE_MODE"
 COMPILE_MODE_ADAPTER = pydantic.TypeAdapter(CompileMode)
 COMPILE_MODE = COMPILE_MODE_ADAPTER.validate_python(
-    os.getenv(COMPILE_MODE_ENV_VAR, "export")
+    os.getenv(COMPILE_MODE_ENV_VAR, COMPILE_EXPORT)
 )

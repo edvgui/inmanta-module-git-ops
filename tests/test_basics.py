@@ -53,34 +53,98 @@ def test_unroll_slices(
 
     # Empty store should work just fine
     with monkeypatch.context() as ctx:
-        ctx.setattr(const, "COMPILE_MODE", "activate")
+        ctx.setattr(const, "COMPILE_MODE", const.COMPILE_UPDATE)
         project.compile(model, no_dedent=False)
 
     # Add some one slice to the folder
     s1 = store.source_path / "s1.yaml"
     s1.write_text(yaml.safe_dump({"a": 0}))
+    s1_v1 = store.active_path / "s1@v1.json"
+    s1_v2 = store.active_path / "s1@v2.json"
 
     # Compile with one slice should now produce one resource
     with monkeypatch.context() as ctx:
-        ctx.setattr(const, "COMPILE_MODE", "activate")
+        ctx.setattr(const, "COMPILE_MODE", const.COMPILE_UPDATE)
         project.compile(model, no_dedent=False)
 
+    assert not s1_v1.exists()
     r1 = project.get_resource("unittest::Resource", name="test:s1")
     assert r1 is not None
-    assert r1.desired_value == '{"a": 0}'
+    assert r1.desired_value == '{"a": 0, "_path": "."}'
 
     # Add some another slice to the folder
     s2 = store.source_path / "s2.yaml"
     s2.write_text(yaml.safe_dump({"a": 1}))
+    s2_v1 = store.active_path / "s2@v1.json"
+    s2_v2 = store.active_path / "s2@v2.json"
 
     # Compile should still work, slices should be differentiated
     with monkeypatch.context() as ctx:
-        ctx.setattr(const, "COMPILE_MODE", "activate")
+        ctx.setattr(const, "COMPILE_MODE", const.COMPILE_UPDATE)
         project.compile(model, no_dedent=False)
+
+    assert not s1_v1.exists()
+    r1 = project.get_resource("unittest::Resource", name="test:s1")
+    assert r1 is not None
+    assert r1.desired_value == '{"a": 0, "_path": "."}'
+    assert not s2_v1.exists()
+    r2 = project.get_resource("unittest::Resource", name="test:s2")
+    assert r2 is not None
+    assert r2.desired_value == '{"a": 1, "_path": "."}'
+
+    # Nothing has been synced, exporting compile should not have any resource
+    project.compile(model, no_dedent=False)
+    assert not project.resources
+
+    # Sync the changes
+    with monkeypatch.context() as ctx:
+        ctx.setattr(const, "COMPILE_MODE", const.COMPILE_SYNC)
+        project.compile(model, no_dedent=False)
+
+    assert s1_v1.exists()
+    assert not s1_v2.exists()
+    r1 = project.get_resource("unittest::Resource", name="test:s1")
+    assert r1 is not None
+    assert s2_v1.exists()
+    assert not s2_v2.exists()
+    r2 = project.get_resource("unittest::Resource", name="test:s2")
+    assert r2 is not None
+
+    # Exporting compile should now have all the resources
+    project.compile(model, no_dedent=False)
 
     r1 = project.get_resource("unittest::Resource", name="test:s1")
     assert r1 is not None
-    assert r1.desired_value == '{"a": 0}'
     r2 = project.get_resource("unittest::Resource", name="test:s2")
     assert r2 is not None
-    assert r2.desired_value == '{"a": 1}'
+
+    # Second sync shouldn't change anything
+    with monkeypatch.context() as ctx:
+        ctx.setattr(const, "COMPILE_MODE", const.COMPILE_SYNC)
+        project.compile(model, no_dedent=False)
+
+    assert s1_v1.exists()
+    assert not s1_v2.exists()
+    r1 = project.get_resource("unittest::Resource", name="test:s1")
+    assert r1 is not None
+    assert s2_v1.exists()
+    assert not s2_v2.exists()
+    r2 = project.get_resource("unittest::Resource", name="test:s2")
+    assert r2 is not None
+
+    # Update first slice
+    s1.write_text(yaml.safe_dump({"a": 1}))
+
+    # Sync changes
+    with monkeypatch.context() as ctx:
+        ctx.setattr(const, "COMPILE_MODE", const.COMPILE_SYNC)
+        project.compile(model, no_dedent=False)
+
+    assert s1_v1.exists()
+    assert s1_v2.exists()
+    r1 = project.get_resource("unittest::Resource", name="test:s1")
+    assert r1 is not None
+    assert s2_v1.exists()
+    assert not s2_v2.exists()
+    r2 = project.get_resource("unittest::Resource", name="test:s2")
+    assert r2 is not None

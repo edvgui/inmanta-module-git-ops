@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from inmanta.plugins import plugin
 from inmanta.util import dict_path
 
-type CompileMode = typing.Literal["activate", "export"]
+type CompileMode = typing.Literal["update", "sync", "export"]
 
 
 @dataclass(frozen=True, kw_only=True)
