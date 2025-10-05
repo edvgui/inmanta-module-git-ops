@@ -1,2 +1,2 @@
-inmanta-module-std==8.5.0
+inmanta-module-std==8.5.1
 inmanta-module-config==0.7.0
