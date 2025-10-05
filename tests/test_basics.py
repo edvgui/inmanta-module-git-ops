@@ -45,7 +45,7 @@ def test_unroll_slices(
 
         for slice in git_ops::unroll_slices("test"):
             unittest::Resource(
-                name=slice.store_name + ":" + slice.identifier,
+                name=slice.store_name + ":" + slice.name,
                 desired_value=std::json_dumps(slice.attributes),
             )
         end

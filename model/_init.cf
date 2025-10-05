@@ -21,7 +21,7 @@ entity Slice extends std::Dataclass:
     """
     Entity representing a slice that can be fetched from a file.
     """
-    string identifier
+    string name
     string store_name
     int version
     dict attributes

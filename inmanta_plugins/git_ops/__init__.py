@@ -27,7 +27,7 @@ type CompileMode = typing.Literal["update", "sync", "export"]
 
 @dataclass(frozen=True, kw_only=True)
 class Slice:
-    identifier: str
+    name: str
     store_name: str
     version: int
     attributes: dict
@@ -50,7 +50,7 @@ def unroll_slices(
 @plugin
 def get_slice_attribute(
     store_name: str,
-    identifier: str,
+    name: str,
     path: str,
 ) -> object:
     """
@@ -58,20 +58,20 @@ def get_slice_attribute(
     dict path expression.
 
     :param store_name: The name of the store in which the slice is defined.
-    :param identifier: The identifier of the slice within the store.
+    :param name: The name of the slice within the store.
     :param path: The path within the slice's attributes towards the value that
         should be fetched.
     """
     from inmanta_plugins.git_ops import store
 
-    slice = store.get_store(store_name).get_one_slice(identifier)
+    slice = store.get_store(store_name).get_one_slice(name)
     return dict_path.to_path(path).get_element(slice.attributes)
 
 
 @plugin
 def update_slice_attribute(
     store_name: str,
-    identifier: str,
+    name: str,
     path: str,
     value: object,
 ) -> object:
@@ -80,13 +80,13 @@ def update_slice_attribute(
     dict path expression.
 
     :param store_name: The name of the store in which the slice is defined.
-    :param identifier: The identifier of the slice within the store.
+    :param name: The name of the slice within the store.
     :param path: The path within the slice's attributes towards the value that
         should be updated.
     :param value: The value that should be inserted into the slice attributes.
     """
     from inmanta_plugins.git_ops import store
 
-    slice = store.get_store(store_name).get_one_slice(identifier)
+    slice = store.get_store(store_name).get_one_slice(name)
     dict_path.to_path(path).set_element(slice.attributes, value)
     return value

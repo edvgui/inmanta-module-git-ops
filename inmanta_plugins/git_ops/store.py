@@ -118,7 +118,7 @@ class SliceFile:
         attributes = self.read()
 
         return Slice(
-            identifier=self.name,
+            name=self.name,
             store_name=store_name,
             version=version,
             attributes=attributes,
@@ -333,7 +333,7 @@ class SliceStore:
             else:
                 # Latest is not deleted, emit a new deleted slice
                 self.source_slices[name] = Slice(
-                    identifier=name,
+                    name=name,
                     store_name=self.name,
                     version=latest.version + 1,
                     attributes={},
@@ -371,7 +371,7 @@ class SliceStore:
 
             # Merge the current and previous slices together
             self.slices[slice] = Slice(
-                identifier=slice,
+                name=slice,
                 store_name=self.name,
                 version=current.version,
                 attributes=merge_attributes(
@@ -407,7 +407,7 @@ class SliceStore:
                 slice_file.write(slice.attributes)
 
         if changed:
-            changed_slices = [s.identifier for s in changed]
+            changed_slices = [s.name for s in changed]
             raise RuntimeError(
                 f"Sync blocked: some slices still contained some change: {changed_slices}"
             )
@@ -416,8 +416,8 @@ class SliceStore:
             # The slice can be activated, create the file, then save the slice content
             # into it
             slice_file = SliceFile(
-                path=self.active_path / f"{slice.identifier}@v{slice.version}.json",
-                name=slice.identifier,
+                path=self.active_path / f"{slice.name}@v{slice.version}.json",
+                name=slice.name,
                 version=slice.version,
                 extension="json",
             )
@@ -450,23 +450,23 @@ class SliceStore:
         """
         return list(self.load_slices().values())
 
-    def get_one_slice(self, identifier: str) -> Slice:
+    def get_one_slice(self, name: str) -> Slice:
         """
-        Get one slice with the given identifier.  Raise a LookupError if it
+        Get one slice with the given name.  Raise a LookupError if it
         doesn't exist.
 
-        :param identifier: The identifier of the slice.  Matching the name of
+        :param name: The name of the slice.  Matching the name of
             the file defining the slice.
         """
         slices = self.load_slices()
 
-        if identifier not in slices:
+        if name not in slices:
             raise LookupError(
-                f"No slice with identifier {identifier} in store {self.name}. "
+                f"No slice with name {name} in store {self.name}. "
                 f"Known slices are {slices.keys()}"
             )
 
-        return slices[identifier]
+        return slices[name]
 
 
 def get_store(store_name: str) -> SliceStore:
