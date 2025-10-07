@@ -263,12 +263,9 @@ class SliceObjectABC(pydantic.BaseModel):
 
             if python_type is None:
                 # No annotation
-                LOGGER.warning(
-                    "%s.%s doesn't have any type annotation",
-                    str(cls),
-                    attribute,
+                raise ValueError(
+                    f"{cls}.{attribute} doesn't have any type annotation"
                 )
-                continue
 
             # Primitive
             with contextlib.suppress(ValueError):
@@ -331,11 +328,8 @@ class SliceObjectABC(pydantic.BaseModel):
                     continue
 
             # Couldn't parse the attribute, log a warning and continue
-            LOGGER.warning(
-                "%s.%s has an unsupported type annotation: %s",
-                str(cls),
-                attribute,
-                str(python_type),
+            raise ValueError(
+                f"{cls}.{attribute} has an unsupported type annotation: {python_type}"
             )
 
         # Validate that the keys all match attributes
