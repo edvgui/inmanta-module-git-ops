@@ -278,34 +278,6 @@ class SliceObjectABC(pydantic.BaseModel):
                 )
                 continue
 
-            # Required relation
-            if issubclass(python_type, SliceObjectABC):
-                embedded_entities.append(
-                    SliceEntityRelationSchema(
-                        name=attribute,
-                        description=info.description,
-                        entity=python_type.entity_schema(),
-                        cardinality_min=1,
-                        cardinality_max=1,
-                    )
-                )
-                continue
-
-            # Optional relation
-            with contextlib.suppress(ValueError):
-                optional = get_optional_type(python_type)
-                if issubclass(optional, SliceObjectABC):
-                    embedded_entities.append(
-                        SliceEntityRelationSchema(
-                            name=attribute,
-                            description=info.description,
-                            entity=optional.entity_schema(),
-                            cardinality_min=0,
-                            cardinality_max=1,
-                        )
-                    )
-                    continue
-
             # Relation
             if (
                 typing_inspect.is_generic_type(python_type)
@@ -324,6 +296,34 @@ class SliceObjectABC(pydantic.BaseModel):
                         )
                     )
                     continue
+
+            # Optional relation
+            with contextlib.suppress(ValueError):
+                optional = get_optional_type(python_type)
+                if issubclass(optional, SliceObjectABC):
+                    embedded_entities.append(
+                        SliceEntityRelationSchema(
+                            name=attribute,
+                            description=info.description,
+                            entity=optional.entity_schema(),
+                            cardinality_min=0,
+                            cardinality_max=1,
+                        )
+                    )
+                    continue
+
+            # Required relation
+            if issubclass(python_type, SliceObjectABC):
+                embedded_entities.append(
+                    SliceEntityRelationSchema(
+                        name=attribute,
+                        description=info.description,
+                        entity=python_type.entity_schema(),
+                        cardinality_min=1,
+                        cardinality_max=1,
+                    )
+                )
+                continue
 
             # Couldn't parse the attribute, log a warning and continue
             raise ValueError(

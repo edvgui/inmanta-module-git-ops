@@ -1,3 +1,2 @@
 inmanta-module-std==8.5.1
 inmanta-module-config==0.7.0
-pydantic==2.11.10
