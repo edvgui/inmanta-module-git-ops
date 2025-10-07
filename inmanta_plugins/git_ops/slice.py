@@ -110,7 +110,7 @@ def to_inmanta_type(python_type: type[object]) -> inmanta_type.Type:
     raise ValueError(f"Can not handle type {python_type}")
 
 
-@dataclass(kw_only=True, frozen=True)
+@dataclass(kw_only=True)
 class SliceEntityRelationSchema:
     name: str
     description: str | None
@@ -119,14 +119,14 @@ class SliceEntityRelationSchema:
     cardinality_max: int | None = None
 
 
-@dataclass(kw_only=True, frozen=True)
+@dataclass(kw_only=True)
 class SliceEntityAttributeSchema:
     name: str
     description: str | None
     inmanta_type: inmanta_type.Type
 
 
-@dataclass(kw_only=True, frozen=True)
+@dataclass(kw_only=True)
 class SliceEntitySchema:
     name: str
     keys: Sequence[str]
@@ -135,17 +135,60 @@ class SliceEntitySchema:
     embedded_entities: Sequence[SliceEntityRelationSchema]
     attributes: Sequence[SliceEntityAttributeSchema]
 
+    def all_attributes(self) -> Sequence[SliceEntityAttributeSchema]:
+        """
+        Get all of the attributes that can be used by instances of this
+        entity.  This includes the attributes defined on this entity and
+        the one defined an any of its parents.
+        """
+        attributes_by_name: dict[str, SliceEntityAttributeSchema] = dict()
+
+        for base_entity in reversed(self.base_entities):
+            attributes_by_name.update(
+                {attr.name: attr for attr in base_entity.all_attributes()}
+            )
+
+        attributes_by_name.update({attr.name: attr for attr in self.attributes})
+        return list(attributes_by_name.values())
+
 
 class SliceObjectABC(pydantic.BaseModel):
-    keys: typing.ClassVar[Sequence[str]]
+    keys: typing.ClassVar[Sequence[str]] = tuple()
+
+    operation: str
+    path: str
 
     @classmethod
     def entity_schema(cls) -> SliceEntitySchema:
+        cached_attribute = f"_{cls.__name__}__entity_schema__"
+        if hasattr(cls, cached_attribute):
+            return typing.cast(SliceEntitySchema, getattr(cls, cached_attribute))
+
         embedded_entities: list[SliceEntityRelationSchema] = []
         attributes: list[SliceEntityAttributeSchema] = []
 
+        # Handle recursive type definition by setting up the schema
+        # cache before exploring any of the relations
+        entity_schema = SliceEntitySchema(
+            name=cls.__name__,
+            keys=cls.keys,
+            base_entities=[
+                base_class.entity_schema()
+                for base_class in cls.__bases__
+                if issubclass(base_class, SliceObjectABC)
+            ],
+            description=cls.__doc__,
+            embedded_entities=embedded_entities,
+            attributes=attributes,
+        )
+        setattr(cls, cached_attribute, entity_schema)
+
         for attribute, info in cls.model_fields.items():
             python_type = info.annotation
+
+            if attribute not in cls.__annotations__:
+                # This attribute is defined on a parent class
+                continue
 
             if python_type is None:
                 # No annotation
@@ -225,7 +268,7 @@ class SliceObjectABC(pydantic.BaseModel):
             )
 
         # Validate that the keys all match attributes
-        attribute_names = [attr.name for attr in attributes]
+        attribute_names = [attr.name for attr in entity_schema.all_attributes()]
         missing = set(cls.keys) - set(attribute_names)
         if missing:
             raise ValueError(
@@ -233,11 +276,4 @@ class SliceObjectABC(pydantic.BaseModel):
                 f"Some keys of {cls} don't follow this constraint: {missing}"
             )
 
-        return SliceEntitySchema(
-            name=cls.__name__,
-            keys=cls.keys,
-            base_entities=[],  # TODO
-            description=cls.__doc__,
-            embedded_entities=embedded_entities,
-            attributes=attributes,
-        )
+        return entity_schema
