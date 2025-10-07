@@ -263,9 +263,7 @@ class SliceObjectABC(pydantic.BaseModel):
 
             if python_type is None:
                 # No annotation
-                raise ValueError(
-                    f"{cls}.{attribute} doesn't have any type annotation"
-                )
+                raise ValueError(f"{cls}.{attribute} doesn't have any type annotation")
 
             # Primitive
             with contextlib.suppress(ValueError):
