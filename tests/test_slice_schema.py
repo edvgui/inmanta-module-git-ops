@@ -23,20 +23,23 @@ import inmanta.ast.type as inmanta_type
 from inmanta_plugins.git_ops import slice
 
 
-class TestEmbeddedSlice(slice.SliceObjectABC):
+# Test base classes
+class NamedSlice(slice.SliceObjectABC):
     keys: typing.ClassVar[Sequence[str]] = ["name"]
 
     name: str
+    description: str | None
+
+
+class TestEmbeddedSlice(NamedSlice, slice.SliceObjectABC):
     unique_id: int | None = None
-    description: str
+
+    # Test recursion
+    recursive_slice: Sequence["TestEmbeddedSlice"] = []
 
 
-class TestSlice(slice.SliceObjectABC):
-    keys: typing.ClassVar[Sequence[str]] = ["name"]
-
-    name: str
+class TestSlice(NamedSlice, slice.SliceObjectABC):
     unique_id: int | None = None
-    description: str
 
     embedded_required: TestEmbeddedSlice
     embedded_optional: TestEmbeddedSlice | None = None
@@ -44,109 +47,32 @@ class TestSlice(slice.SliceObjectABC):
 
 
 def test_basics() -> None:
-    assert TestSlice.entity_schema() == slice.SliceEntitySchema(
-        name="TestSlice",
-        description=None,
-        keys=["name"],
+    abc_slice = slice.SliceEntitySchema(
+        name="SliceObjectABC",
+        keys=tuple(),
         base_entities=[],
-        embedded_entities=[
-            slice.SliceEntityRelationSchema(
-                name="embedded_required",
+        description=None,
+        embedded_entities=[],
+        attributes=[
+            slice.SliceEntityAttributeSchema(
+                name="operation",
                 description=None,
-                entity=slice.SliceEntitySchema(
-                    name="TestEmbeddedSlice",
-                    keys=["name"],
-                    base_entities=[],
-                    description=None,
-                    embedded_entities=[],
-                    attributes=[
-                        slice.SliceEntityAttributeSchema(
-                            name="name",
-                            description=None,
-                            inmanta_type=inmanta_type.String(),
-                        ),
-                        slice.SliceEntityAttributeSchema(
-                            name="unique_id",
-                            description=None,
-                            inmanta_type=inmanta_type.NullableType(
-                                inmanta_type.Integer()
-                            ),
-                        ),
-                        slice.SliceEntityAttributeSchema(
-                            name="description",
-                            description=None,
-                            inmanta_type=inmanta_type.String(),
-                        ),
-                    ],
-                ),
-                cardinality_min=1,
-                cardinality_max=1,
+                inmanta_type=inmanta_type.String(),
             ),
-            slice.SliceEntityRelationSchema(
-                name="embedded_optional",
+            slice.SliceEntityAttributeSchema(
+                name="path",
                 description=None,
-                entity=slice.SliceEntitySchema(
-                    name="TestEmbeddedSlice",
-                    keys=["name"],
-                    base_entities=[],
-                    description=None,
-                    embedded_entities=[],
-                    attributes=[
-                        slice.SliceEntityAttributeSchema(
-                            name="name",
-                            description=None,
-                            inmanta_type=inmanta_type.String(),
-                        ),
-                        slice.SliceEntityAttributeSchema(
-                            name="unique_id",
-                            description=None,
-                            inmanta_type=inmanta_type.NullableType(
-                                inmanta_type.Integer()
-                            ),
-                        ),
-                        slice.SliceEntityAttributeSchema(
-                            name="description",
-                            description=None,
-                            inmanta_type=inmanta_type.String(),
-                        ),
-                    ],
-                ),
-                cardinality_min=0,
-                cardinality_max=1,
-            ),
-            slice.SliceEntityRelationSchema(
-                name="embedded_sequence",
-                description=None,
-                entity=slice.SliceEntitySchema(
-                    name="TestEmbeddedSlice",
-                    keys=["name"],
-                    base_entities=[],
-                    description=None,
-                    embedded_entities=[],
-                    attributes=[
-                        slice.SliceEntityAttributeSchema(
-                            name="name",
-                            description=None,
-                            inmanta_type=inmanta_type.String(),
-                        ),
-                        slice.SliceEntityAttributeSchema(
-                            name="unique_id",
-                            description=None,
-                            inmanta_type=inmanta_type.NullableType(
-                                inmanta_type.Integer()
-                            ),
-                        ),
-                        slice.SliceEntityAttributeSchema(
-                            name="description",
-                            description=None,
-                            inmanta_type=inmanta_type.String(),
-                        ),
-                    ],
-                ),
-                cardinality_min=0,
-                cardinality_max=None,
+                inmanta_type=inmanta_type.String(),
             ),
         ],
+    )
+
+    named_slice = slice.SliceEntitySchema(
+        name="NamedSlice",
+        keys=["name"],
+        base_entities=[abc_slice],
+        description=None,
+        embedded_entities=[],
         attributes=[
             slice.SliceEntityAttributeSchema(
                 name="name",
@@ -154,14 +80,51 @@ def test_basics() -> None:
                 inmanta_type=inmanta_type.String(),
             ),
             slice.SliceEntityAttributeSchema(
+                name="description",
+                description=None,
+                inmanta_type=inmanta_type.NullableType(inmanta_type.String()),
+            ),
+        ],
+    )
+
+    # Hack infinite recursion equality by using the same object instead of
+    # and equivalent one.  "is" check doesn't need to recurse, while "eq" does.
+    embedded_slice = TestEmbeddedSlice.entity_schema()
+    assert embedded_slice.embedded_entities[0].entity is embedded_slice
+
+    assert TestSlice.entity_schema() == slice.SliceEntitySchema(
+        name="TestSlice",
+        description=None,
+        keys=["name"],
+        base_entities=[named_slice, abc_slice],
+        embedded_entities=[
+            slice.SliceEntityRelationSchema(
+                name="embedded_required",
+                description=None,
+                entity=embedded_slice,
+                cardinality_min=1,
+                cardinality_max=1,
+            ),
+            slice.SliceEntityRelationSchema(
+                name="embedded_optional",
+                description=None,
+                entity=embedded_slice,
+                cardinality_min=0,
+                cardinality_max=1,
+            ),
+            slice.SliceEntityRelationSchema(
+                name="embedded_sequence",
+                description=None,
+                entity=embedded_slice,
+                cardinality_min=0,
+                cardinality_max=None,
+            ),
+        ],
+        attributes=[
+            slice.SliceEntityAttributeSchema(
                 name="unique_id",
                 description=None,
                 inmanta_type=inmanta_type.NullableType(inmanta_type.Integer()),
-            ),
-            slice.SliceEntityAttributeSchema(
-                name="description",
-                description=None,
-                inmanta_type=inmanta_type.String(),
             ),
         ],
     )
