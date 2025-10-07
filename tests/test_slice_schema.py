@@ -35,7 +35,7 @@ class EmbeddedSlice(NamedSlice, slice.SliceObjectABC):
     unique_id: int | None = None
 
     # Test recursion
-    recursive_slice: Sequence["EmbeddedSlice"] = []
+    recursive_slice: typing.Sequence["EmbeddedSlice"] = []
 
 
 class Slice(NamedSlice, slice.SliceObjectABC):
@@ -43,7 +43,7 @@ class Slice(NamedSlice, slice.SliceObjectABC):
 
     embedded_required: EmbeddedSlice
     embedded_optional: EmbeddedSlice | None = None
-    embedded_sequence: Sequence[EmbeddedSlice] = []
+    embedded_sequence: typing.Sequence[EmbeddedSlice] = []
 
 
 def test_basics() -> None:
