@@ -51,17 +51,29 @@ def test_basics() -> None:
         name="SliceObjectABC",
         keys=tuple(),
         base_entities=[],
-        description=None,
+        description="""
+    Base class for all slice definitions.  This class should be extended
+    by any configuration object that is part of any slice.
+
+    :attr keys: The names of the attributes identifying the instances of this entity.
+    """,
         embedded_entities=[],
         attributes=[
             slice.SliceEntityAttributeSchema(
                 name="operation",
-                description=None,
+                description=(
+                    "The operation attached to this part of the slice.  "
+                    "This dictates what to do with the model emitted by this slice (create/update/delete).  "
+                    "This value is not a user input, it is inserted into the slice source when the slice store is populated."
+                ),
                 inmanta_type=inmanta_type.String(),
             ),
             slice.SliceEntityAttributeSchema(
                 name="path",
-                description=None,
+                description=(
+                    "The path leading to this slice object, starting from the root of the slice definition.  "
+                    "This value should be a valid dict path expression."
+                ),
                 inmanta_type=inmanta_type.String(),
             ),
         ],

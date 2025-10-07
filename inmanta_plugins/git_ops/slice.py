@@ -112,6 +112,21 @@ def to_inmanta_type(python_type: type[object]) -> inmanta_type.Type:
 
 @dataclass(kw_only=True)
 class SliceEntityRelationSchema:
+    """
+    Schema of a relation connection a slice entity to another
+    embedded slice entity.
+
+    :attr name: The name of the relation, matching the attribute
+        name in the python definition.
+    :attr description: The description of the python attribute, if
+        there is any.
+    :attr entity: The embedded entity's schema.
+    :attr cardinality_min: The minimal amount of embedded entity
+        instances which are required to be attached to the parent.
+    :attr cardinality_max: The maximal amount of embedded entity
+        instances which are required to be attached to the parent.
+    """
+
     name: str
     description: str | None
     entity: "SliceEntitySchema"
@@ -121,6 +136,20 @@ class SliceEntityRelationSchema:
 
 @dataclass(kw_only=True)
 class SliceEntityAttributeSchema:
+    """
+    Schema of an attribute of a slice entity.  The difference
+    with the relation schema is the nature of the type.  Attributes
+    may only contain primitive values, while relations point to
+    entities.
+
+    :attr name: The name of the attribute, matching the attribute
+        name in the python definition.
+    :attr description: The description of the python attribute, if
+        there is any.
+    :attr inmanta_type: The type of the attribute, translated into
+        the inmanta type system.
+    """
+
     name: str
     description: str | None
     inmanta_type: inmanta_type.Type
@@ -128,6 +157,22 @@ class SliceEntityAttributeSchema:
 
 @dataclass(kw_only=True)
 class SliceEntitySchema:
+    """
+    Schema of an slice entity, with all its attributes and relations.
+
+    :attr name: The name of the entity, matching the class name of the
+        python definition.
+    :attr keys: A collection of names of attributes of this entity, which
+        should be used to identify instances of this entity grouped in the
+        same relation.
+    :attr base_entities: The entity schema matching the parent classes of
+        the class for which this entity schema is emitted.
+    :attr description: The description of the python class defining the
+        entity, if there is any.
+    :attr embedded_entities: A list of relations towards other slice entities.
+    :attr attributes: A list of attributes defined on the entity.
+    """
+
     name: str
     keys: Sequence[str]
     base_entities: Sequence["SliceEntitySchema"]
@@ -153,13 +198,39 @@ class SliceEntitySchema:
 
 
 class SliceObjectABC(pydantic.BaseModel):
+    """
+    Base class for all slice definitions.  This class should be extended
+    by any configuration object that is part of any slice.
+
+    :attr keys: The names of the attributes identifying the instances of this entity.
+    """
+
     keys: typing.ClassVar[Sequence[str]] = tuple()
 
-    operation: str
-    path: str
+    operation: str = pydantic.Field(
+        default="create",
+        description=(
+            "The operation attached to this part of the slice.  "
+            "This dictates what to do with the model emitted by this slice (create/update/delete).  "
+            "This value is not a user input, it is inserted into the slice source when the slice store is populated."
+        ),
+    )
+    path: str = pydantic.Field(
+        default=".",
+        description=(
+            "The path leading to this slice object, starting from the root of the slice definition.  "
+            "This value should be a valid dict path expression."
+        ),
+    )
 
     @classmethod
     def entity_schema(cls) -> SliceEntitySchema:
+        """
+        Emit the schema of the entity corresponding to this slice class.
+        This schema can be used to generate the model definition matching
+        the python class definition.
+        """
+
         cached_attribute = f"_{cls.__name__}__entity_schema__"
         if hasattr(cls, cached_attribute):
             return typing.cast(SliceEntitySchema, getattr(cls, cached_attribute))
