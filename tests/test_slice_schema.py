@@ -31,19 +31,19 @@ class NamedSlice(slice.SliceObjectABC):
     description: str | None
 
 
-class TestEmbeddedSlice(NamedSlice, slice.SliceObjectABC):
+class EmbeddedSlice(NamedSlice, slice.SliceObjectABC):
     unique_id: int | None = None
 
     # Test recursion
-    recursive_slice: Sequence["TestEmbeddedSlice"] = []
+    recursive_slice: Sequence["EmbeddedSlice"] = []
 
 
-class TestSlice(NamedSlice, slice.SliceObjectABC):
+class Slice(NamedSlice, slice.SliceObjectABC):
     unique_id: int | None = None
 
-    embedded_required: TestEmbeddedSlice
-    embedded_optional: TestEmbeddedSlice | None = None
-    embedded_sequence: Sequence[TestEmbeddedSlice] = []
+    embedded_required: EmbeddedSlice
+    embedded_optional: EmbeddedSlice | None = None
+    embedded_sequence: Sequence[EmbeddedSlice] = []
 
 
 def test_basics() -> None:
@@ -101,11 +101,11 @@ def test_basics() -> None:
 
     # Hack infinite recursion equality by using the same object instead of
     # and equivalent one.  "is" check doesn't need to recurse, while "eq" does.
-    embedded_slice = TestEmbeddedSlice.entity_schema()
+    embedded_slice = EmbeddedSlice.entity_schema()
     assert embedded_slice.embedded_entities[0].entity is embedded_slice
 
-    assert TestSlice.entity_schema() == slice.SliceEntitySchema(
-        name="TestSlice",
+    assert Slice.entity_schema() == slice.SliceEntitySchema(
+        name="Slice",
         description=None,
         keys=["name"],
         base_entities=[named_slice, abc_slice],
