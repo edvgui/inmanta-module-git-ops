@@ -17,6 +17,7 @@ Contact: edvgui@gmail.com
 """
 
 import contextlib
+import inspect
 import logging
 import typing
 from collections.abc import Mapping, Sequence
@@ -246,7 +247,8 @@ class SliceObjectABC(pydantic.BaseModel):
             base_entities=[
                 base_class.entity_schema()
                 for base_class in cls.__bases__
-                if issubclass(base_class, SliceObjectABC)
+                if inspect.isclass(base_class)
+                and issubclass(base_class, SliceObjectABC)
             ],
             description=cls.__doc__,
             embedded_entities=embedded_entities,
@@ -285,7 +287,7 @@ class SliceObjectABC(pydantic.BaseModel):
                 and origin in [Sequence, list, typing.Sequence]
                 and (args := typing.get_args(python_type)) is not None
             ):
-                if issubclass(args[0], SliceObjectABC):
+                if inspect.isclass(args[0]) and issubclass(args[0], SliceObjectABC):
                     embedded_entities.append(
                         SliceEntityRelationSchema(
                             name=attribute,
@@ -300,7 +302,7 @@ class SliceObjectABC(pydantic.BaseModel):
             # Optional relation
             with contextlib.suppress(ValueError):
                 optional = get_optional_type(python_type)
-                if issubclass(optional, SliceObjectABC):
+                if inspect.isclass(optional) and issubclass(optional, SliceObjectABC):
                     embedded_entities.append(
                         SliceEntityRelationSchema(
                             name=attribute,
@@ -313,7 +315,7 @@ class SliceObjectABC(pydantic.BaseModel):
                     continue
 
             # Required relation
-            if issubclass(python_type, SliceObjectABC):
+            if inspect.isclass(python_type) and issubclass(python_type, SliceObjectABC):
                 embedded_entities.append(
                     SliceEntityRelationSchema(
                         name=attribute,
