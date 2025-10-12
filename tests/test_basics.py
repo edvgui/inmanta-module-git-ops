@@ -16,14 +16,40 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 
+import json
 import pathlib
+import typing
+from collections.abc import Sequence
 
 import pytest
 import yaml
 from pytest_inmanta.plugin import Project
 
-from inmanta_plugins.git_ops import const
+from inmanta_plugins.git_ops import const, slice
 from inmanta_plugins.git_ops.store import SliceStore
+
+
+# Test base classes
+class NamedSlice(slice.SliceObjectABC):
+    keys: typing.ClassVar[Sequence[str]] = ["name"]
+
+    name: str
+    description: str | None = None
+
+
+class EmbeddedSlice(NamedSlice, slice.SliceObjectABC):
+    unique_id: int | None = None
+
+    # Test recursion
+    recursive_slice: Sequence["EmbeddedSlice"] = []
+
+
+class Slice(NamedSlice, slice.SliceObjectABC):
+    unique_id: int | None = None
+
+    embedded_required: EmbeddedSlice
+    embedded_optional: EmbeddedSlice | None = None
+    embedded_sequence: Sequence[EmbeddedSlice] = []
 
 
 def test_basics(project: Project) -> None:
@@ -35,8 +61,9 @@ def test_unroll_slices(
 ) -> None:
     # Define a basic store
     store = SliceStore(
-        "test",
+        name="test",
         folder="file://" + str(tmp_path / "test"),
+        schema=Slice,
     )
 
     model = """
@@ -45,26 +72,32 @@ def test_unroll_slices(
         import unittest
 
         for slice in git_ops::unroll_slices("test"):
-            b = "_purged" in slice.attributes
-                ? slice.attributes["b"]
+            attributes = slice["attributes"]
+            unique_id = attributes["operation"] == "delete"
+                ? attributes["unique_id"]
                 : git_ops::processors::unique_integer(
-                    slice.store_name,
-                    slice.name,
-                    "b",
+                    slice["store_name"],
+                    slice["name"],
+                    "unique_id",
                     used_integers=git_ops::processors::used_values(
-                        slice.store_name,
-                        "b",
+                        slice["store_name"],
+                        "unique_id",
                     ),
                 )
 
             unittest::Resource(
-                name=slice.store_name + ":" + slice.name,
+                name=slice["store_name"] + ":" + slice["name"],
                 desired_value=std::json_dumps(
                     {
-                        "a": slice.attributes["a"],
-                        "b": b,
-                        "_purged": "_purged" in slice.attributes,
-                    },
+                        "name": attributes["name"],
+                        "description": attributes["description"],
+                        "unique_id": unique_id,
+                        "operation": attributes["operation"],
+                        "path": attributes["path"],
+                        "embedded_required": attributes["embedded_required"],
+                        "embedded_optional": attributes["embedded_optional"],
+                        "embedded_sequence": attributes["embedded_sequence"],
+                    }
                 ),
             )
         end
@@ -76,8 +109,14 @@ def test_unroll_slices(
         project.compile(model, no_dedent=False)
 
     # Add some one slice to the folder
+    s1_obj = Slice(
+        name="a",
+        embedded_required=EmbeddedSlice(
+            name="aa",
+        ),
+    )
     s1 = store.source_path / "s1.yaml"
-    s1.write_text(yaml.safe_dump({"a": 0}))
+    s1.write_text(yaml.safe_dump(s1_obj.model_dump(mode="json")))
     s1_v1 = store.active_path / "s1@v1.json"
     s1_v2 = store.active_path / "s1@v2.json"
 
@@ -89,11 +128,33 @@ def test_unroll_slices(
     assert not s1_v1.exists()
     r1 = project.get_resource("unittest::Resource", name="test:s1")
     assert r1 is not None
-    assert r1.desired_value == '{"a": 0, "b": 0, "_purged": false}'
+    assert json.loads(r1.desired_value) == {
+        "name": "a",
+        "description": None,
+        "unique_id": 0,
+        "operation": "create",
+        "path": ".",
+        "embedded_required": {
+            "operation": "create",
+            "path": "embedded_required",
+            "name": "aa",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        "embedded_optional": None,
+        "embedded_sequence": [],
+    }
 
     # Add some another slice to the folder
+    s2_obj = Slice(
+        name="b",
+        embedded_required=EmbeddedSlice(
+            name="bb",
+        ),
+    )
     s2 = store.source_path / "s2.yaml"
-    s2.write_text(yaml.safe_dump({"a": 1}))
+    s2.write_text(yaml.safe_dump(s2_obj.model_dump(mode="json")))
     s2_v1 = store.active_path / "s2@v1.json"
     s2_v2 = store.active_path / "s2@v2.json"
 
@@ -105,13 +166,69 @@ def test_unroll_slices(
     assert not s1_v1.exists()
     r1 = project.get_resource("unittest::Resource", name="test:s1")
     assert r1 is not None
-    assert r1.desired_value == '{"a": 0, "b": 0, "_purged": false}'
-    assert yaml.safe_load(s1.read_text()) == {"a": 0, "b": 0}
+    assert json.loads(r1.desired_value) == {
+        "name": "a",
+        "description": None,
+        "unique_id": 0,
+        "operation": "create",
+        "path": ".",
+        "embedded_required": {
+            "operation": "create",
+            "path": "embedded_required",
+            "name": "aa",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        "embedded_optional": None,
+        "embedded_sequence": [],
+    }
+    assert yaml.safe_load(s1.read_text()) == {
+        "name": "a",
+        "description": None,
+        "unique_id": 0,
+        "embedded_required": {
+            "name": "aa",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        "embedded_optional": None,
+        "embedded_sequence": [],
+    }
     assert not s2_v1.exists()
     r2 = project.get_resource("unittest::Resource", name="test:s2")
     assert r2 is not None
-    assert r2.desired_value == '{"a": 1, "b": 1, "_purged": false}'
-    assert yaml.safe_load(s2.read_text()) == {"a": 1, "b": 1}
+    assert json.loads(r2.desired_value) == {
+        "name": "b",
+        "description": None,
+        "unique_id": 1,
+        "operation": "create",
+        "path": ".",
+        "embedded_required": {
+            "operation": "create",
+            "path": "embedded_required",
+            "name": "bb",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        "embedded_optional": None,
+        "embedded_sequence": [],
+    }
+    assert yaml.safe_load(s2.read_text()) == {
+        "name": "b",
+        "description": None,
+        "unique_id": 1,
+        "embedded_required": {
+            "name": "bb",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        "embedded_optional": None,
+        "embedded_sequence": [],
+    }
 
     # Nothing has been synced, exporting compile should not have any resource
     project.compile(model, no_dedent=False)
@@ -154,7 +271,11 @@ def test_unroll_slices(
     assert r2 is not None
 
     # Update first slice
-    s1.write_text(yaml.safe_dump({"a": 1, "b": 0}))
+    s1_obj = Slice(**yaml.safe_load(s1.read_text()))
+    s1_obj.description = "Updated"
+    s1_obj.embedded_optional = EmbeddedSlice(name="ab")
+    s1_obj.embedded_sequence = [EmbeddedSlice(name="ac")]
+    s1.write_text(yaml.safe_dump(s1_obj.model_dump(mode="json")))
 
     # Sync changes
     with monkeypatch.context() as ctx:
@@ -165,12 +286,60 @@ def test_unroll_slices(
     assert s1_v2.exists()
     r1 = project.get_resource("unittest::Resource", name="test:s1")
     assert r1 is not None
-    assert r1.desired_value == '{"a": 1, "b": 0, "_purged": false}'
+    assert json.loads(r1.desired_value) == {
+        "name": "a",
+        "description": "Updated",
+        "unique_id": 0,
+        "operation": "update",
+        "path": ".",
+        "embedded_required": {
+            "operation": "update",
+            "path": "embedded_required",
+            "name": "aa",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        "embedded_optional": {
+            "operation": "create",
+            "path": "embedded_optional",
+            "name": "ab",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        "embedded_sequence": [
+            {
+                "operation": "create",
+                "path": "embedded_sequence[name=ac]",
+                "name": "ac",
+                "description": None,
+                "unique_id": None,
+                "recursive_slice": [],
+            }
+        ],
+    }
     assert s2_v1.exists()
     assert not s2_v2.exists()
     r2 = project.get_resource("unittest::Resource", name="test:s2")
     assert r2 is not None
-    assert r2.desired_value == '{"a": 1, "b": 1, "_purged": false}'
+    assert json.loads(r2.desired_value) == {
+        "name": "b",
+        "description": None,
+        "unique_id": 1,
+        "operation": "create",
+        "path": ".",
+        "embedded_required": {
+            "operation": "create",
+            "path": "embedded_required",
+            "name": "bb",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        "embedded_optional": None,
+        "embedded_sequence": [],
+    }
 
     # Delete a slice
     s1.unlink()
@@ -186,4 +355,36 @@ def test_unroll_slices(
     assert s1_v3.exists()
     r1 = project.get_resource("unittest::Resource", name="test:s1")
     assert r1 is not None
-    assert r1.desired_value == '{"a": 1, "b": 0, "_purged": true}'
+    assert json.loads(r1.desired_value) == {
+        "name": "a",
+        "description": "Updated",
+        "unique_id": 0,
+        "operation": "delete",
+        "path": ".",
+        "embedded_required": {
+            "operation": "delete",
+            "path": "embedded_required",
+            "name": "aa",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        "embedded_optional": {
+            "operation": "delete",
+            "path": "embedded_optional",
+            "name": "ab",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        "embedded_sequence": [
+            {
+                "operation": "delete",
+                "path": "embedded_sequence[name=ac]",
+                "name": "ac",
+                "description": None,
+                "unique_id": None,
+                "recursive_slice": [],
+            }
+        ],
+    }

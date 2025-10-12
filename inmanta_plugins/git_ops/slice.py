@@ -25,6 +25,7 @@ from dataclasses import dataclass
 
 import pydantic
 import typing_inspect
+from pydantic.json_schema import SkipJsonSchema
 
 import inmanta.ast.type as inmanta_type
 
@@ -197,6 +198,22 @@ class SliceEntitySchema:
         attributes_by_name.update({attr.name: attr for attr in self.attributes})
         return list(attributes_by_name.values())
 
+    def all_relations(self) -> Sequence[SliceEntityRelationSchema]:
+        """
+        Get all of the relations that can be used by instances of this
+        entity.  This includes the relations defined on this entity and
+        the one defined an any of its parents.
+        """
+        relations_by_name: dict[str, SliceEntityRelationSchema] = dict()
+
+        for base_entity in reversed(self.base_entities):
+            relations_by_name.update(
+                {attr.name: attr for attr in base_entity.all_relations()}
+            )
+
+        relations_by_name.update({attr.name: attr for attr in self.embedded_entities})
+        return list(relations_by_name.values())
+
 
 class SliceObjectABC(pydantic.BaseModel):
     """
@@ -208,20 +225,22 @@ class SliceObjectABC(pydantic.BaseModel):
 
     keys: typing.ClassVar[Sequence[str]] = tuple()
 
-    operation: str = pydantic.Field(
+    operation: SkipJsonSchema[str] = pydantic.Field(
         default="create",
         description=(
             "The operation attached to this part of the slice.  "
             "This dictates what to do with the model emitted by this slice (create/update/delete).  "
             "This value is not a user input, it is inserted into the slice source when the slice store is populated."
         ),
+        exclude=True,
     )
-    path: str = pydantic.Field(
+    path: SkipJsonSchema[str] = pydantic.Field(
         default=".",
         description=(
             "The path leading to this slice object, starting from the root of the slice definition.  "
             "This value should be a valid dict path expression."
         ),
+        exclude=True,
     )
 
     @classmethod
