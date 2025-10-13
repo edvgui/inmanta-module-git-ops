@@ -1,3 +1,5 @@
 inmanta-core>=6
 inmanta-dev-dependencies[module]
 pytest-inmanta>=2
+-e .[generator]
+-e docs/example

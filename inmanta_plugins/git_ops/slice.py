@@ -71,10 +71,6 @@ def to_inmanta_type(python_type: type[object]) -> inmanta_type.Type:
     if isinstance(python_type, typing.TypeAliasType):
         return to_inmanta_type(python_type.__value__)
 
-    # None to None
-    if python_type is type(None) or python_type is None:
-        return inmanta_type.Null()
-
     # Optional type
     if typing_inspect.is_union_type(python_type) and typing_inspect.is_optional_type(
         python_type
@@ -96,7 +92,13 @@ def to_inmanta_type(python_type: type[object]) -> inmanta_type.Type:
         else:
             raise ValueError(f"Can not handle type {python_type} (generic)")
 
-    # Primitive types
+    # Basic types
+    if python_type is list:
+        return inmanta_type.List()
+
+    if python_type is dict:
+        return inmanta_type.Dict()
+
     if python_type is str:
         return inmanta_type.String()
 
@@ -177,6 +179,7 @@ class SliceEntitySchema:
 
     name: str
     keys: Sequence[str]
+    path: Sequence[str]
     base_entities: Sequence["SliceEntitySchema"]
     description: str | None
     embedded_entities: Sequence[SliceEntityRelationSchema]
@@ -258,11 +261,18 @@ class SliceObjectABC(pydantic.BaseModel):
         embedded_entities: list[SliceEntityRelationSchema] = []
         attributes: list[SliceEntityAttributeSchema] = []
 
+        # Validate that the class is defined in an inmanta module
+        if not cls.__module__.startswith("inmanta_plugins."):
+            raise ValueError(
+                f"{cls} is not defined in an inmanta module: {cls.__module__}"
+            )
+
         # Handle recursive type definition by setting up the schema
         # cache before exploring any of the relations
         entity_schema = SliceEntitySchema(
             name=cls.__name__,
             keys=cls.keys,
+            path=cls.__module__.split(".")[1:],
             base_entities=[
                 base_class.entity_schema()
                 for base_class in cls.__bases__

@@ -15,4 +15,3 @@ limitations under the License.
 
 Contact: edvgui@gmail.com
 """
-from inmanta_plugins.example.slices import simple, recursive  # noqa: F401
