@@ -20,10 +20,12 @@ jobs:
       uses: astral-sh/setup-uv@v6
 
     - name: Install inmanta-core
-      run: uv install inmanta-core --user
+      run: |
+        uv venv
+        uv pip install inmanta-core
 
     - name: Build a binary wheel
-      run: uv run inmanta module build
+      run: uv run -m inmanta.app module build
 
     - name: Store the distribution packages
       uses: actions/upload-artifact@v4
@@ -112,10 +114,12 @@ jobs:
       uses: astral-sh/setup-uv@v6
 
     - name: Install inmanta-core
-      run: uv install inmanta-core --user
+      run: |
+        uv venv
+        uv pip install inmanta-core
 
     - name: Build a binary wheel
-      run: uv run inmanta module build
+      run: uv run -m inmanta.app module build
 
     - name: Store the distribution packages
       uses: actions/upload-artifact@v4
