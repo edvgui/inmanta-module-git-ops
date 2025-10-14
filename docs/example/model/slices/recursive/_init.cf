@@ -20,8 +20,8 @@ import git_ops::slice
 entity EmbeddedOptional extends EmbeddedSlice:
     """
 
-    Embedded slice that is optional.
-
+        Embedded slice that is optional.
+    
 
     :rel _parent: Relation to parent
     """
@@ -32,8 +32,8 @@ index EmbeddedOptional(name, _parent)
 entity EmbeddedRequired extends EmbeddedSlice:
     """
 
-    Embedded slice that is required.
-
+        Embedded slice that is required.
+    
 
     :rel _parent: Relation to parent
     """
@@ -44,8 +44,8 @@ index EmbeddedRequired(name, _parent)
 entity EmbeddedSequence extends EmbeddedSlice:
     """
 
-    Embedded slice that is part of a sequence.
-
+        Embedded slice that is part of a sequence.
+    
 
     :rel _parent: Relation to parent
     """
@@ -56,8 +56,8 @@ index EmbeddedSequence(name, _parent)
 entity EmbeddedSlice extends NamedSlice, git_ops::slice::SliceObjectABC:
     """
 
-    Base class for all slices embedded into a parent slice.
-
+        Base class for all slices embedded into a parent slice.
+    
 
     :attr unique_id: 
     :rel _parent: Relation to parent
@@ -76,8 +76,8 @@ index EmbeddedSlice(name)
 entity NamedSlice extends git_ops::slice::SliceObjectABC:
     """
 
-    Base class for all slices identified with a name.
-
+        Base class for all slices identified with a name.
+    
 
     :attr description: 
     :attr name: 
@@ -91,8 +91,8 @@ index NamedSlice(name)
 entity Slice extends NamedSlice, git_ops::slice::SliceObjectABC:
     """
 
-    Main slice.
-
+        Main slice.
+    
 
     :attr unique_id: 
     :rel embedded_optional: 

@@ -16,40 +16,17 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 
-import typing
-from collections.abc import Sequence
+from inmanta_plugins.example.slices.recursive import EmbeddedSlice, Slice
 
 import inmanta.ast.type as inmanta_type
 from inmanta_plugins.git_ops import slice
-
-
-# Test base classes
-class NamedSlice(slice.SliceObjectABC):
-    keys: typing.ClassVar[Sequence[str]] = ["name"]
-
-    name: str
-    description: str | None
-
-
-class EmbeddedSlice(NamedSlice, slice.SliceObjectABC):
-    unique_id: int | None = None
-
-    # Test recursion
-    recursive_slice: Sequence["EmbeddedSlice"] = []
-
-
-class Slice(NamedSlice, slice.SliceObjectABC):
-    unique_id: int | None = None
-
-    embedded_required: EmbeddedSlice
-    embedded_optional: EmbeddedSlice | None = None
-    embedded_sequence: Sequence[EmbeddedSlice] = []
 
 
 def test_basics() -> None:
     abc_slice = slice.SliceEntitySchema(
         name="SliceObjectABC",
         keys=tuple(),
+        path=["git_ops", "slice"],
         base_entities=[],
         description="""
     Base class for all slice definitions.  This class should be extended
@@ -82,8 +59,9 @@ def test_basics() -> None:
     named_slice = slice.SliceEntitySchema(
         name="NamedSlice",
         keys=["name"],
+        path=["example", "slices", "recursive"],
         base_entities=[abc_slice],
-        description=None,
+        description="\n    Base class for all slices identified with a name.\n    ",
         embedded_entities=[],
         attributes=[
             slice.SliceEntityAttributeSchema(
@@ -106,28 +84,53 @@ def test_basics() -> None:
 
     assert Slice.entity_schema() == slice.SliceEntitySchema(
         name="Slice",
-        description=None,
+        description="\n    Main slice.\n    ",
         keys=["name"],
+        path=["example", "slices", "recursive"],
         base_entities=[named_slice, abc_slice],
         embedded_entities=[
             slice.SliceEntityRelationSchema(
                 name="embedded_required",
                 description=None,
-                entity=embedded_slice,
+                entity=slice.SliceEntitySchema(
+                    name="EmbeddedRequired",
+                    description="\n    Embedded slice that is required.\n    ",
+                    keys=["name"],
+                    path=["example", "slices", "recursive"],
+                    base_entities=[embedded_slice],
+                    attributes=[],
+                    embedded_entities=[],
+                ),
                 cardinality_min=1,
                 cardinality_max=1,
             ),
             slice.SliceEntityRelationSchema(
                 name="embedded_optional",
                 description=None,
-                entity=embedded_slice,
+                entity=slice.SliceEntitySchema(
+                    name="EmbeddedOptional",
+                    description="\n    Embedded slice that is optional.\n    ",
+                    keys=["name"],
+                    path=["example", "slices", "recursive"],
+                    base_entities=[embedded_slice],
+                    attributes=[],
+                    embedded_entities=[],
+                ),
                 cardinality_min=0,
                 cardinality_max=1,
             ),
             slice.SliceEntityRelationSchema(
                 name="embedded_sequence",
                 description=None,
-                entity=embedded_slice,
+                entity=slice.SliceEntitySchema(
+                    name="EmbeddedSequence",
+                    description="\n    Embedded slice that is part of a sequence.\n    ",
+                    keys=["name"],
+                    path=["example", "slices", "recursive"],
+                    base_entities=[embedded_slice],
+                    attributes=[],
+                    embedded_entities=[],
+                ),
                 cardinality_min=0,
                 cardinality_max=None,
             ),

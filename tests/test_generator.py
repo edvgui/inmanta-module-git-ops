@@ -31,20 +31,22 @@ def test_basics() -> None:
 
     git_ops = ModuleV2.from_path(str(git_ops_path))
     assert git_ops is not None
+    git_ops._is_editable_install = True
     example = ModuleV2.from_path(str(example_path))
     assert example is not None
     example._is_editable_install = True
 
-    # Preload cache with entity of git_ops module
+    # Preload cache with entity of git_ops module and generate module base entity
+    git_ops_builder = InmantaModuleBuilder.from_existing_module(git_ops)
     generator.get_entity(
         slice.SliceObjectABC.entity_schema(),
-        builder=InmantaModuleBuilder.from_existing_module(git_ops),
+        builder=git_ops_builder,
     )
-
-    builder = InmantaModuleBuilder.from_existing_module(example)
+    git_ops_builder.upgrade_existing_module(git_ops, fix_linting=False)
 
     # Generate the model for the slices defined in the example module
-    generator.get_entity(simple.Slice.entity_schema(), builder=builder)
-    generator.get_entity(recursive.Slice.entity_schema(), builder=builder)
+    example_builder = InmantaModuleBuilder.from_existing_module(example)
+    generator.get_entity(simple.Slice.entity_schema(), builder=example_builder)
+    generator.get_entity(recursive.Slice.entity_schema(), builder=example_builder)
 
-    builder.upgrade_existing_module(example, fix_linting=False)
+    example_builder.upgrade_existing_module(example, fix_linting=False)

@@ -30,7 +30,7 @@ class NamedSlice(slice.SliceObjectABC):
     keys: typing.ClassVar[Sequence[str]] = ["name"]
 
     name: str
-    description: str | None
+    description: str | None = None
 
 
 class EmbeddedSlice(NamedSlice, slice.SliceObjectABC):
