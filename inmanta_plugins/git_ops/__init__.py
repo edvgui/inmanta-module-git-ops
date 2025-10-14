@@ -18,7 +18,7 @@ Contact: edvgui@gmail.com
 
 import functools
 import typing
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from inmanta.plugins import Plugin, plugin
 from inmanta.util import dict_path
@@ -38,14 +38,15 @@ class Slice:
 @plugin
 def unroll_slices(
     store_name: str,
-) -> list[Slice]:
+) -> list[dict]:
     """
     Find all the slices defined in the given folder, return them in a list
     of dicts.  The files are expected to be valid yaml files.
     """
     from inmanta_plugins.git_ops import store
 
-    return store.get_store(store_name).get_all_slices()
+    all_slices = store.get_store(store_name).get_all_slices()
+    return [asdict(s) for s in all_slices]
 
 
 @plugin

@@ -9,14 +9,24 @@ jobs:
 
     steps:
     - uses: actions/checkout@v5
+
     - name: Set up Python
       uses: actions/setup-python@v6
       with:
-        python-version: "3.x"
+        python-version: 3.12
+        architecture: 'x64'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v6
+
     - name: Install inmanta-core
-      run: python3 -m pip install inmanta-core --user
+      run: |
+        uv venv
+        uv pip install inmanta-core
+
     - name: Build a binary wheel
-      run: python3 -m inmanta.app module build
+      run: uv run inmanta module build
+
     - name: Store the distribution packages
       uses: actions/upload-artifact@v4
       with:
@@ -93,14 +103,24 @@ jobs:
 
     steps:
     - uses: actions/checkout@v5
+
     - name: Set up Python
       uses: actions/setup-python@v6
       with:
-        python-version: "3.x"
+        python-version: 3.12
+        architecture: 'x64'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v6
+
     - name: Install inmanta-core
-      run: python3 -m pip install inmanta-core --user
+      run: |
+        uv venv
+        uv pip install inmanta-core
+
     - name: Build a binary wheel
-      run: python3 -m inmanta.app module build --dev
+      run: uv run inmanta module build
+
     - name: Store the distribution packages
       uses: actions/upload-artifact@v4
       with:

@@ -12,5 +12,4 @@ format:
 	$(pyupgrade)
 
 install:
-	pip install -U pip setuptools
-	pip install -U --upgrade-strategy=eager -r requirements.dev.txt -c requirements.txt -e .
+	uv pip install -U -r requirements.dev.txt -c requirements.txt -e .
