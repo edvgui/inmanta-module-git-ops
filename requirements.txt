@@ -1,3 +1,3 @@
 inmanta-module-std==8.5.1
 inmanta-module-config==0.7.0
-inmanta-module-factory @ git+https://code.inmanta.com/solutions/tools/inmanta-module-factory@41a96fa3980d6f44383bf3db419bf6f881cf40d3
+inmanta-module-factory==3.0.0
