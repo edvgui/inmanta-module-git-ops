@@ -22,22 +22,65 @@ from inmanta_module_factory.builder import InmantaModuleBuilder
 from inmanta_module_factory.inmanta import (
     Attribute,
     Entity,
-    EntityField,
     EntityRelation,
     Implement,
     Index,
+    InmantaAdvancedType,
+    InmantaBooleanType,
+    InmantaDictType,
+    InmantaFloatType,
+    InmantaIntegerType,
+    InmantaListType,
+    InmantaStringType,
+    InmantaType,
 )
 
-from inmanta.ast.type import NullableType
+from inmanta.ast.type import (
+    Bool,
+    Dict,
+    Float,
+    Integer,
+    List,
+    NullableType,
+    String,
+    Type,
+    TypedList,
+)
 from inmanta_plugins.git_ops import slice
 
 # Cache entities to support recursive schema generation
 ENTITIES: dict[Sequence[str], Entity] = {}
 
 
+def get_attribute_type(inmanta_type: Type) -> InmantaType:
+    """
+    Map a type of the inmanta dsl to the corresponding generator equivalent.
+    """
+    match inmanta_type:
+        case String():
+            return InmantaStringType
+        case Integer():
+            return InmantaIntegerType
+        case Float():
+            return InmantaFloatType
+        case Bool():
+            return InmantaBooleanType
+        case Dict():
+            return InmantaDictType
+        case List():
+            return InmantaAdvancedType("list")
+        case TypedList():
+            return InmantaListType(get_attribute_type(inmanta_type.element_type))
+        case NullableType():
+            return get_attribute_type(inmanta_type.element_type)
+        case _:
+            raise ValueError(f"Unsupported attribute type: {inmanta_type}")
+
+
 def get_attribute(
     schema: slice.SliceEntityAttributeSchema,
     *,
+    entity: Entity,
     builder: InmantaModuleBuilder,
 ) -> Attribute:
     """
@@ -49,13 +92,10 @@ def get_attribute(
     """
     return Attribute(
         name=schema.name,
-        inmanta_type=(
-            schema.inmanta_type.element_type.type_string()
-            if isinstance(schema.inmanta_type, NullableType)
-            else schema.inmanta_type.type_string()
-        ),
+        inmanta_type=get_attribute_type(schema.inmanta_type),
         optional=isinstance(schema.inmanta_type, NullableType),
         description=schema.description,
+        entity=entity,
     )
 
 
@@ -81,11 +121,13 @@ def get_relation(
         cardinality=(1, 1),
         description="Relation to parent",
     )
-    get_entity(
+    embedded_entity = get_entity(
         schema=schema.entity,
         builder=builder,
         parent_relation=parent_relation,
     )
+    parent_relation.attach_entity(embedded_entity)
+    embedded_entity.attach_field(parent_relation)
 
     return EntityRelation(
         name=schema.name,
@@ -137,20 +179,9 @@ def get_entity(
     ENTITIES[entity_path] = entity
     builder.add_module_element(entity)
 
-    # Collect all the fields that should be part of the index
-    index_fields: list[EntityField] = []
-    if parent_relation is not None:
-        entity.attach_field(parent_relation)
-        index_fields.append(parent_relation)
-
     # Go over all the attributes and relations
     for attribute in schema.attributes:
-        a = get_attribute(attribute, builder=builder)
-
-        if a.name in schema.keys:
-            index_fields.append(a)
-
-        entity.attach_field(a)
+        get_attribute(attribute, entity=entity, builder=builder)
 
     for relation in schema.embedded_entities:
         builder.add_module_element(
@@ -162,12 +193,18 @@ def get_entity(
         )
 
     # Generate an index
-    if index_fields:
+    if schema.keys:
+        key_fields = [
+            field for field in entity.all_fields() if field.name in schema.keys
+        ]
+        if parent_relation is not None:
+            key_fields.append(parent_relation)
+
         builder.add_module_element(
             Index(
                 path=entity.path,
                 entity=entity,
-                fields=index_fields,
+                fields=key_fields,
             )
         )
 

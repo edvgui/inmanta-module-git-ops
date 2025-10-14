@@ -19,26 +19,32 @@ Contact: edvgui@gmail.com
 import pathlib
 
 from inmanta_module_factory.builder import InmantaModuleBuilder
-from inmanta_module_factory.inmanta import Module
 from inmanta_plugins.example.slices import recursive, simple
 
+from inmanta.module import ModuleV2
 from inmanta_plugins.git_ops import generator, slice
 
 
 def test_basics() -> None:
+    git_ops_path = pathlib.Path(__file__).parent.parent
     example_path = pathlib.Path(__file__).parent.parent / "docs/example"
 
+    git_ops = ModuleV2.from_path(str(git_ops_path))
+    assert git_ops is not None
+    example = ModuleV2.from_path(str(example_path))
+    assert example is not None
+    example._is_editable_install = True
+
+    # Preload cache with entity of git_ops module
     generator.get_entity(
         slice.SliceObjectABC.entity_schema(),
-        builder=InmantaModuleBuilder(Module("git_ops"), allow_watermark=True),
+        builder=InmantaModuleBuilder.from_existing_module(git_ops),
     )
 
-    example = Module(name="example")
-    builder = InmantaModuleBuilder(example, allow_watermark=True)
+    builder = InmantaModuleBuilder.from_existing_module(example)
 
     # Generate the model for the slices defined in the example module
-    s1 = generator.get_entity(simple.Slice.entity_schema(), builder=builder)
-    s2 = generator.get_entity(recursive.Slice.entity_schema(), builder=builder)
+    generator.get_entity(simple.Slice.entity_schema(), builder=builder)
+    generator.get_entity(recursive.Slice.entity_schema(), builder=builder)
 
-    builder.generate_model_file(example_path / "model", s1.path_string)
-    builder.generate_model_file(example_path / "model", s2.path_string)
+    builder.upgrade_existing_module(example, fix_linting=False)

@@ -16,9 +16,9 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 
-import pydantic
 from collections.abc import Sequence
 
+import pydantic
 from inmanta_plugins.git_ops import slice
 
 
@@ -26,16 +26,15 @@ class Slice(slice.SliceObjectABC):
     """
     Main slice.
     """
-    name: str = pydantic.Field(
-        description="The name of the slice."
-    )
+
+    name: str = pydantic.Field(description="The name of the slice.")
     description: str | None = pydantic.Field(
         default=None,
         description="A helpful description of the slice's function.",
     )
     unique_id: int | None = pydantic.Field(
         default=None,
-        description="A unique identifier automatically assigned to this slice."
+        description="A unique identifier automatically assigned to this slice.",
     )
     some_number: float = pydantic.Field(
         default=0.0,

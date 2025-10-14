@@ -83,7 +83,7 @@ def to_inmanta_type(python_type: type[object]) -> inmanta_type.Type:
     if typing_inspect.is_generic_type(python_type):
         origin = typing.get_origin(python_type)
         if origin in [Mapping, dict, typing.Mapping]:
-            return inmanta_type.TypedDict(inmanta_type.Any())
+            return inmanta_type.Dict()
         elif origin in [Sequence, list, typing.Sequence]:
             args = typing.get_args(python_type)
             if not args:

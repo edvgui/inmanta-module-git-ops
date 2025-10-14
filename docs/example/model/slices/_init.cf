@@ -16,4 +16,7 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 
-from inmanta_plugins.example.slices import recursive, simple  # noqa: F401
+
+
+# This file has been generated using inmanta-module-factory==3.0.0
+# <IMF-GENERATED-FILE/>

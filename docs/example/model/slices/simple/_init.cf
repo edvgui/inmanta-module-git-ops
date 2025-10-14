@@ -15,13 +15,32 @@ limitations under the License.
 
 Contact: edvgui@gmail.com
 """
+import git_ops::slice
 
-from pytest_inmanta.plugin import Project
+entity Slice extends git_ops::slice::SliceObjectABC:
+    """
+
+    Main slice.
 
 
-def test_basics(project: Project) -> None:
-    project.compile("import example")
+    :attr description: A helpful description of the slice's function.
+    :attr name: The name of the slice.
+    :attr some_dict: An example of dict field.
+    :attr some_flag: An example of boolean field.
+    :attr some_list: An example of list field.
+    :attr some_number: An example of number field.
+    :attr unique_id: A unique identifier automatically assigned to this slice.
+    """
+    string? description = null
+    string name
+    dict some_dict
+    bool some_flag
+    list some_list
+    float some_number
+    int? unique_id = null
+end
 
+implement Slice using parents
 
 # This file has been generated using inmanta-module-factory==3.0.0
 # <IMF-GENERATED-FILE/>

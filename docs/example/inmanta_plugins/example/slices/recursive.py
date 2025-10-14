@@ -26,6 +26,7 @@ class NamedSlice(slice.SliceObjectABC):
     """
     Base class for all slices identified with a name.
     """
+
     keys: typing.ClassVar[Sequence[str]] = ["name"]
 
     name: str
@@ -36,6 +37,7 @@ class EmbeddedSlice(NamedSlice, slice.SliceObjectABC):
     """
     Base class for all slices embedded into a parent slice.
     """
+
     unique_id: int | None = None
 
     # Test recursion
@@ -64,6 +66,7 @@ class Slice(NamedSlice, slice.SliceObjectABC):
     """
     Main slice.
     """
+
     unique_id: int | None = None
 
     embedded_required: EmbeddedRequired
