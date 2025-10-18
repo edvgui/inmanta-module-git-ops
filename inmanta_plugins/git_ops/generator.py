@@ -142,6 +142,7 @@ def get_relation(
 def get_entity(
     schema: slice.SliceEntitySchema,
     *,
+    slice_root: bool = False,
     parent_relation: EntityRelation | None = None,
     builder: InmantaModuleBuilder,
 ) -> Entity:
@@ -193,7 +194,7 @@ def get_entity(
         )
 
     # Generate an index
-    if schema.keys:
+    if slice_root or parent_relation is not None:
         key_fields = [
             field for field in entity.all_fields() if field.name in schema.keys
         ]

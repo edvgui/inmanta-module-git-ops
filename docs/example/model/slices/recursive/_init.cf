@@ -71,8 +71,6 @@ EmbeddedSlice.recursive_slice [0:] -- EmbeddedSlice._parent [1]
 Peer relation: Relation to parent
 """
 
-index EmbeddedSlice(name)
-
 entity NamedSlice extends git_ops::slice::SliceObjectABC:
     """
 
@@ -85,8 +83,6 @@ entity NamedSlice extends git_ops::slice::SliceObjectABC:
     string? description = null
     string name
 end
-
-index NamedSlice(name)
 
 entity Slice extends NamedSlice, git_ops::slice::SliceObjectABC:
     """

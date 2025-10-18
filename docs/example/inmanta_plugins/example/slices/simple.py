@@ -17,6 +17,7 @@ Contact: edvgui@gmail.com
 """
 
 from collections.abc import Sequence
+import typing
 
 import pydantic
 from inmanta_plugins.git_ops import slice
@@ -26,6 +27,7 @@ class Slice(slice.SliceObjectABC):
     """
     Main slice.
     """
+    keys: typing.ClassVar[Sequence[str]] = ["name"]
 
     name: str = pydantic.Field(description="The name of the slice.")
     description: str | None = pydantic.Field(

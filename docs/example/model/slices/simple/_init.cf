@@ -40,6 +40,8 @@ entity Slice extends git_ops::slice::SliceObjectABC:
     int? unique_id = null
 end
 
+index Slice(name)
+
 implement Slice using parents
 
 # This file has been generated using inmanta-module-factory==3.0.0
