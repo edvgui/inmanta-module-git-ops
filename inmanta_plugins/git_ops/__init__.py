@@ -77,12 +77,15 @@ def attributes(
 
     # Find the python class
     class_name = slice_object_type.split(".")[-1]
-    slice_object_module = importlib.import_module(slice_object_type.removesuffix(f".{class_name}"))
+    slice_object_module = importlib.import_module(
+        slice_object_type.removesuffix(f".{class_name}")
+    )
     slice_object_cls = getattr(slice_object_module, class_name)
 
     # Make sure the class is a valid slice
     from inmanta_plugins.git_ops import slice
-    if not isinstance(slice_object_cls, slice.SliceObjectABC):
+
+    if not issubclass(slice_object_cls, slice.SliceObjectABC):
         raise ValueError(
             f"Class {slice_object_type} (from {slice_object_type}) is not a valid Slice definition."
         )

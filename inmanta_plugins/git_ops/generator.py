@@ -33,6 +33,7 @@ from inmanta_module_factory.inmanta import (
     InmantaListType,
     InmantaStringType,
     InmantaType,
+    Implementation,
 )
 
 from inmanta.ast.type import (
@@ -102,7 +103,7 @@ def get_attribute(
 def get_relation(
     schema: slice.SliceEntityRelationSchema,
     *,
-    entity: Entity,
+    parent: Entity,
     builder: InmantaModuleBuilder,
 ) -> EntityRelation:
     """
@@ -121,21 +122,68 @@ def get_relation(
         cardinality=(1, 1),
         description="Relation to parent",
     )
-    embedded_entity = get_entity(
-        schema=schema.entity,
-        builder=builder,
-        parent_relation=parent_relation,
-    )
+
+    if len(schema.entity.all_parents()) > 1:
+        base = get_entity(
+            schema=schema.entity,
+            builder=builder,
+            parent_relation=None,
+        )
+        embedded_entity = Entity(
+            name=parent.name + base.name,
+            path=parent.path,
+            parents=[base],
+            description=(
+                "This entity has been generated because it's base entity:\n\n"
+                f"    {base.full_path_string}\n\n"
+                "has multiple parent.  Or in other words, multiple entities\n"
+                "have a relation to this base entity, making it impossible\n"
+                "to define a unique parent relation."
+            ),
+        )
+
+        builder.add_module_element(embedded_entity)
+
+        key_fields = [
+            field for field in embedded_entity.all_fields() if field.name in schema.entity.keys
+        ]
+        if parent_relation is not None:
+            key_fields.append(parent_relation)
+
+        builder.add_module_element(
+            Index(
+                path=embedded_entity.path,
+                entity=embedded_entity,
+                fields=key_fields,
+            )
+        )
+
+        # Add a basic implement statement
+        builder.add_module_element(
+            Implement(
+                path=embedded_entity.path,
+                implementation=None,
+                entity=embedded_entity,
+                using_parents=True,
+            )
+        )
+    else:
+        embedded_entity = get_entity(
+            schema=schema.entity,
+            builder=builder,
+            parent_relation=parent_relation,
+        )
+
     parent_relation.attach_entity(embedded_entity)
     embedded_entity.attach_field(parent_relation)
 
     return EntityRelation(
         name=schema.name,
-        path=entity.path,
+        path=parent.path,
         cardinality=(schema.cardinality_min, schema.cardinality_max),
         description=schema.description,
         peer=parent_relation,
-        entity=entity,
+        entity=parent,
     )
 
 
@@ -184,12 +232,12 @@ def get_entity(
     for attribute in schema.attributes:
         get_attribute(attribute, entity=entity, builder=builder)
 
-    for relation in schema.all_relations():
+    for relation in schema.embedded_entities:
         builder.add_module_element(
             get_relation(
                 schema=relation,
                 builder=builder,
-                entity=entity,
+                parent=entity,
             )
         )
 
@@ -216,6 +264,14 @@ def get_entity(
             implementation=None,
             entity=entity,
             using_parents=True,
+            implementations=[
+                Implementation(
+                    name="none",
+                    path=["std"],
+                    entity=entity,
+                    content="",
+                )
+            ],
         )
     )
 

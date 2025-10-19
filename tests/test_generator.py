@@ -19,7 +19,7 @@ Contact: edvgui@gmail.com
 import pathlib
 
 from inmanta_module_factory.builder import InmantaModuleBuilder
-from inmanta_plugins.example.slices import recursive, simple, fs
+from inmanta_plugins.example.slices import fs, recursive, simple
 
 from inmanta.module import ModuleV2
 from inmanta_plugins.git_ops import generator, slice
@@ -46,8 +46,14 @@ def test_basics() -> None:
 
     # Generate the model for the slices defined in the example module
     example_builder = InmantaModuleBuilder.from_existing_module(example)
-    generator.get_entity(simple.Slice.entity_schema(), slice_root=True, builder=example_builder)
-    generator.get_entity(recursive.Slice.entity_schema(), slice_root=True, builder=example_builder)
-    generator.get_entity(fs.RootFolder.entity_schema(), slice_root=True, builder=example_builder)
+    generator.get_entity(
+        simple.Slice.entity_schema(), slice_root=True, builder=example_builder
+    )
+    generator.get_entity(
+        recursive.Slice.entity_schema(), slice_root=True, builder=example_builder
+    )
+    generator.get_entity(
+        fs.RootFolder.entity_schema(), slice_root=True, builder=example_builder
+    )
 
     example_builder.upgrade_existing_module(example, fix_linting=False)

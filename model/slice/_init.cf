@@ -15,7 +15,7 @@ limitations under the License.
 
 Contact: edvgui@gmail.com
 """
-
+import std
 
 entity SliceObjectABC:
     """
@@ -31,7 +31,7 @@ entity SliceObjectABC:
     string path
 end
 
-implement SliceObjectABC using parents
+implement SliceObjectABC using std::none, parents
 
 # This file has been generated using inmanta-module-factory==3.0.0
 # <IMF-GENERATED-FILE/>

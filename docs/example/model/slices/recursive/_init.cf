@@ -16,6 +16,7 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 import git_ops::slice
+import std
 
 entity EmbeddedOptional extends EmbeddedSlice:
     """
@@ -52,16 +53,31 @@ entity EmbeddedSlice extends NamedSlice, git_ops::slice::SliceObjectABC:
     Base class for all slices embedded into a parent slice.
 
     :attr unique_id: 
-    :rel parent: Relation to parent
     :rel recursive_slice: 
     """
     int? unique_id = null
 end
 
-EmbeddedSlice.recursive_slice [0:] -- EmbeddedSlice.parent [1]
+EmbeddedSlice.recursive_slice [0:] -- EmbeddedSliceEmbeddedSlice.parent [1]
 """
 Peer relation: Relation to parent
 """
+
+entity EmbeddedSliceEmbeddedSlice extends EmbeddedSlice:
+    """
+    This entity has been generated because it's base entity:
+
+        example::slices::recursive::EmbeddedSlice
+
+    has multiple parent.  Or in other words, multiple entities
+    have a relation to this base entity, making it impossible
+    to define a unique parent relation.
+
+    :rel parent: Relation to parent
+    """
+end
+
+index EmbeddedSliceEmbeddedSlice(name, parent)
 
 entity NamedSlice extends git_ops::slice::SliceObjectABC:
     """
@@ -103,17 +119,19 @@ Peer relation: Relation to parent
 
 index Slice(name)
 
-implement EmbeddedOptional using parents
+implement EmbeddedOptional using std::none, parents
 
-implement EmbeddedRequired using parents
+implement EmbeddedRequired using std::none, parents
 
-implement EmbeddedSequence using parents
+implement EmbeddedSequence using std::none, parents
 
-implement EmbeddedSlice using parents
+implement EmbeddedSlice using std::none, parents
 
-implement NamedSlice using parents
+implement EmbeddedSliceEmbeddedSlice using parents
 
-implement Slice using parents
+implement NamedSlice using std::none, parents
+
+implement Slice using std::none, parents
 
 # This file has been generated using inmanta-module-factory==3.0.0
 # <IMF-GENERATED-FILE/>

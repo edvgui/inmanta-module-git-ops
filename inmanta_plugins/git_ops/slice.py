@@ -225,18 +225,18 @@ class SliceEntitySchema:
         """
         Get all the entities to which this entity is attached via a relation.
         """
-        parents_by_path: dict[Sequence[str], SliceEntityScheme] = dict()
+        parents_by_path: dict[Sequence[str], SliceEntitySchema] = dict()
 
-        for sub_entity in self.sub_entities:
+        for parent in self.parents:
             parents_by_path.update(
                 {tuple(parent.path + [parent.name]): parent}
-                for parent in sub_entity.parents
             )
 
-        parents_by_path.update(
-            {tuple(parent.path + [parent.name]): parent}
-            for parent in self.parents
-        )
+            for sub_entity in parent.sub_entities:
+                parents_by_path.update(
+                    {tuple(sub_entity.path + [sub_entity.name]): sub_entity}
+                )
+
         return list(parents_by_path.values())
 
 
@@ -313,6 +313,7 @@ class SliceObjectABC(pydantic.BaseModel):
                 and issubclass(base_class, SliceObjectABC)
             ],
             sub_entities=list(),
+            parents=list(),
             description=docstring(cls),
             embedded_entities=embedded_entities,
             attributes=attributes,

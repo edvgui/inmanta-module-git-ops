@@ -16,42 +16,16 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 import git_ops::slice
-
-
-entity FolderFile extends File:
-end
-
-index FolderFile(parent, name)
-
-entity RootFolderFile extends File:
-end
-
-index RootFolderFile(parent, name)
-
+import std
 
 entity File extends PathABC:
     """
     A text file in a folder, with its textual content.
 
     :attr content: The textual content of the file.
-    :rel parent: Relation to parent
     """
     string content
 end
-
-index File(name, parent)
-
-entity FolderDirectory extends Folder:
-end
-
-index FolderDirectory(parent, name)
-
-
-entity RootFolderDirectory extends Folder:
-end
-
-index RootFolderDirectory(parent, name)
-
 
 entity Folder extends PathABC:
     """
@@ -59,11 +33,10 @@ entity Folder extends PathABC:
 
     :rel directories: A list of folder to manage within this folder.
     :rel files: A list of files to manage in the folder.
-    :rel parent: Relation to parent
     """
 end
 
-Folder.directories [0:] -- FolderDirectory.parent [1]
+Folder.directories [0:] -- FolderFolder.parent [1]
 """
 A list of folder to manage within this folder.
 Peer relation: Relation to parent
@@ -74,6 +47,38 @@ Folder.files [0:] -- FolderFile.parent [1]
 A list of files to manage in the folder.
 Peer relation: Relation to parent
 """
+
+entity FolderFile extends File:
+    """
+    This entity has been generated because it's base entity:
+
+        example::slices::fs::File
+
+    has multiple parent.  Or in other words, multiple entities
+    have a relation to this base entity, making it impossible
+    to define a unique parent relation.
+
+    :rel parent: Relation to parent
+    """
+end
+
+index FolderFile(name, parent)
+
+entity FolderFolder extends Folder:
+    """
+    This entity has been generated because it's base entity:
+
+        example::slices::fs::Folder
+
+    has multiple parent.  Or in other words, multiple entities
+    have a relation to this base entity, making it impossible
+    to define a unique parent relation.
+
+    :rel parent: Relation to parent
+    """
+end
+
+index FolderFolder(name, parent)
 
 entity PathABC extends git_ops::slice::SliceObjectABC:
     """
@@ -103,25 +108,17 @@ end
 
 index RootFolder(root, name)
 
-RootFolder.directories [0:] -- RootFolderDirectory.parent [1]
-"""
-A list of folder to manage within this folder.
-Peer relation: Relation to parent
-"""
+implement File using std::none, parents
 
-RootFolder.files [0:] -- RootFolderFile.parent [1]
-"""
-A list of files to manage in the folder.
-Peer relation: Relation to parent
-"""
+implement Folder using std::none, parents
 
-implement File using parents
+implement FolderFile using parents
 
-implement Folder using parents
+implement FolderFolder using parents
 
-implement PathABC using parents
+implement PathABC using std::none, parents
 
-implement RootFolder using parents
+implement RootFolder using std::none, parents
 
 # This file has been generated using inmanta-module-factory==3.0.0
 # <IMF-GENERATED-FILE/>

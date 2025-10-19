@@ -228,7 +228,9 @@ class SliceStore[S: slice.SliceObjectABC]:
         outside of an inmanta compile.
         """
         if self._active_path is None:
-            self._active_path = pathlib.Path(resolve_path(f"inmanta:///git_ops/active/{self.name}/"))
+            self._active_path = pathlib.Path(
+                resolve_path(f"inmanta:///git_ops/active/{self.name}/")
+            )
         return self._active_path
 
     def register_store(self) -> None:
@@ -619,6 +621,17 @@ def persist_store() -> None:
         else:
             pass
         store.clear()
+
+
+@finalizer
+def clear_project_paths() -> None:
+    """
+    At the end of the compile, reset the paths that have been calculated based
+    on the project dir.
+    """
+    for store in SLICE_STORE_REGISTRY.values():
+        store._source_path = None
+        store._active_path = None
 
 
 def merge_attributes(

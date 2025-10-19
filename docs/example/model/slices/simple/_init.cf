@@ -16,6 +16,7 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 import git_ops::slice
+import std
 
 entity Slice extends git_ops::slice::SliceObjectABC:
     """
@@ -40,7 +41,7 @@ end
 
 index Slice(name)
 
-implement Slice using parents
+implement Slice using std::none, parents
 
 # This file has been generated using inmanta-module-factory==3.0.0
 # <IMF-GENERATED-FILE/>

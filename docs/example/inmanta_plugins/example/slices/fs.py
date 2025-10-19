@@ -86,7 +86,7 @@ class RootFolder(Folder):
     )
 
 
-store.SliceStore(
+STORE = store.SliceStore(
     name="fs",
     folder="inmanta:///files/fs/",
     schema=RootFolder,
