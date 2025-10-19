@@ -19,12 +19,10 @@ Contact: edvgui@gmail.com
 
 entity SliceObjectABC:
     """
+    Base class for all slice definitions.  This class should be extended
+    by any configuration object that is part of any slice.
 
-        Base class for all slice definitions.  This class should be extended
-        by any configuration object that is part of any slice.
-
-        :attr keys: The names of the attributes identifying the instances of this entity.
-    
+    :attr keys: The names of the attributes identifying the instances of this entity.
 
     :attr operation: The operation attached to this part of the slice.  This dictates what to do with the model emitted by this slice (create/update/delete).  This value is not a user input, it is inserted into the slice source when the slice store is populated.
     :attr path: The path leading to this slice object, starting from the root of the slice definition.  This value should be a valid dict path expression.

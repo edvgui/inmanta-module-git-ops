@@ -196,13 +196,12 @@ class SliceStore[S: slice.SliceObjectABC]:
         # user input.  The content of these files can be updated by plugins
         # while the slice is being activated.  Once the slice is active, it
         # is moved to the active slice directory and can not be modified
-        self.source_path = pathlib.Path(resolve_path(folder))
+        self._folder = folder
+        self._source_path: pathlib.Path | None = None
         self.source_slice_files: dict[str, SliceFile] | None = None
         self.source_slices: dict[str, Slice] | None = None
 
-        self.active_path = pathlib.Path(
-            resolve_path(f"inmanta:///git_ops/active/{self.name}/")
-        )
+        self._active_path: pathlib.Path | None = None
         self.active_slice_files: dict[str, list[SliceFile]] | None = None
         self.active_slices: dict[tuple[str, int], Slice] | None = None
 
@@ -211,6 +210,26 @@ class SliceStore[S: slice.SliceObjectABC]:
         self.slices: dict[str, Slice] | None = None
 
         self.register_store()
+
+    @property
+    def source_path(self) -> pathlib.Path:
+        """
+        Lazy resolution of the source path, to allow constructing the slice object
+        outside of an inmanta compile.
+        """
+        if self._source_path is None:
+            self._source_path = pathlib.Path(resolve_path(self._folder))
+        return self._source_path
+
+    @property
+    def active_path(self) -> pathlib.Path:
+        """
+        Lazy resolution of the active path, to allow constructing the slice object
+        outside of an inmanta compile.
+        """
+        if self._active_path is None:
+            self._active_path = pathlib.Path(resolve_path(f"inmanta:///git_ops/active/{self.name}/"))
+        return self._active_path
 
     def register_store(self) -> None:
         """

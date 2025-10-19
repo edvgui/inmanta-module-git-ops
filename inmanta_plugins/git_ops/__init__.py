@@ -17,6 +17,7 @@ Contact: edvgui@gmail.com
 """
 
 import functools
+import importlib
 import typing
 from dataclasses import asdict, dataclass
 
@@ -47,6 +48,50 @@ def unroll_slices(
 
     all_slices = store.get_store(store_name).get_all_slices()
     return [asdict(s) for s in all_slices]
+
+
+@plugin
+def attributes(
+    slice_object_type: str,
+    slice_object_attr: dict,
+    **overrides: object,
+) -> dict[str, object]:
+    """
+    Extract all the primitive attributes from the given slice object
+    attributes dict (living out any relational attribute).  To do this,
+    the slice object type is required, in python or dsl format.
+
+    Any additional attribute can be provided and will be passed transparently.
+    This is handy for usage with processors which also need to update the
+    content of the attributes.
+
+    :param slice_object_type: The type name of the object that will receive
+        all the attributes values.
+    :param slice_object_attr: The attributes dict, as returned by unroll_slices.
+    :param **overrides: Values that should be returned instead of the attribute
+        value currently in the dict.
+    """
+    # Convert dsl type to python type
+    if "::" in slice_object_type:
+        slice_object_type = "inmanta_plugins." + slice_object_type.replace("::", ".")
+
+    # Find the python class
+    class_name = slice_object_type.split(".")[-1]
+    slice_object_module = importlib.import_module(slice_object_type.removesuffix(f".{class_name}"))
+    slice_object_cls = getattr(slice_object_module, class_name)
+
+    # Make sure the class is a valid slice
+    from inmanta_plugins.git_ops import slice
+    if not isinstance(slice_object_cls, slice.SliceObjectABC):
+        raise ValueError(
+            f"Class {slice_object_type} (from {slice_object_type}) is not a valid Slice definition."
+        )
+
+    # Construct the dict containing only the primitive attributes
+    return {
+        attr.name: overrides.get(attr.name, slice_object_attr[attr.name])
+        for attr in slice_object_cls.entity_schema().all_attributes()
+    }
 
 
 @plugin

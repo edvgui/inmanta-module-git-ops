@@ -16,16 +16,46 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 import git_ops
-import fs
 
 
+entity FolderFactory:
+    """
+    Helper entity to construct a folder and attach it to its parent.
+    """
+    dict attributes
+end
+FolderFactory.parent [1] -- Folder
 
+
+implementation construct_folder for FolderFactory:
+    folder = Folder(
+        parent=self.parent,
+        **git_ops::attributes("example::slices::fs::Folder", self.attributes),
+        files=[
+            File(**git_ops::attributes("example::slices::fs::File", file))
+            for file in self.attributes["files"]
+        ],
+    )
+
+    for child_folder in self.attributes["directories"]:
+        FolderFactory(attributes=child_folder, parent=folder)
+    end
+end
+
+
+implement FolderFactory using construct_folder
 
 
 for slice in git_ops::unroll_slices("fs"):
-    attributes = slice["attributes"]
-
-    fs::Folder(
-
+    root = RootFolder(
+        **git_ops::attributes("example::slices::fs::RootFolder", slice["attributes"]),
+        files=[
+            File(**git_ops::attributes("example::slices::fs::File", file))
+            for file in slice["attributes"]["files"]
+        ],
     )
+
+    for folder in slice["attributes"]["directories"]:
+        FolderFactory(attributes=folder, parent=root)
+    end
 end

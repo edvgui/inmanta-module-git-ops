@@ -19,63 +19,53 @@ import git_ops::slice
 
 entity EmbeddedOptional extends EmbeddedSlice:
     """
+    Embedded slice that is optional.
 
-        Embedded slice that is optional.
-    
-
-    :rel _parent: Relation to parent
+    :rel parent: Relation to parent
     """
 end
 
-index EmbeddedOptional(name, _parent)
+index EmbeddedOptional(name, parent)
 
 entity EmbeddedRequired extends EmbeddedSlice:
     """
+    Embedded slice that is required.
 
-        Embedded slice that is required.
-    
-
-    :rel _parent: Relation to parent
+    :rel parent: Relation to parent
     """
 end
 
-index EmbeddedRequired(name, _parent)
+index EmbeddedRequired(name, parent)
 
 entity EmbeddedSequence extends EmbeddedSlice:
     """
+    Embedded slice that is part of a sequence.
 
-        Embedded slice that is part of a sequence.
-    
-
-    :rel _parent: Relation to parent
+    :rel parent: Relation to parent
     """
 end
 
-index EmbeddedSequence(name, _parent)
+index EmbeddedSequence(name, parent)
 
 entity EmbeddedSlice extends NamedSlice, git_ops::slice::SliceObjectABC:
     """
-
-        Base class for all slices embedded into a parent slice.
-    
+    Base class for all slices embedded into a parent slice.
 
     :attr unique_id: 
-    :rel _parent: Relation to parent
+    :rel parent: Relation to parent
     :rel recursive_slice: 
     """
     int? unique_id = null
 end
 
-EmbeddedSlice.recursive_slice [0:] -- EmbeddedSlice._parent [1]
+EmbeddedSlice.recursive_slice [0:] -- EmbeddedSlice.parent [1]
 """
 Peer relation: Relation to parent
 """
 
 entity NamedSlice extends git_ops::slice::SliceObjectABC:
     """
-
-        Base class for all slices identified with a name.
-    
+    Base class for all slices identified with a name.
 
     :attr description: 
     :attr name: 
@@ -86,9 +76,7 @@ end
 
 entity Slice extends NamedSlice, git_ops::slice::SliceObjectABC:
     """
-
-        Main slice.
-    
+    Main slice.
 
     :attr unique_id: 
     :rel embedded_optional: 
@@ -98,17 +86,17 @@ entity Slice extends NamedSlice, git_ops::slice::SliceObjectABC:
     int? unique_id = null
 end
 
-Slice.embedded_optional [0:1] -- EmbeddedOptional._parent [1]
+Slice.embedded_optional [0:1] -- EmbeddedOptional.parent [1]
 """
 Peer relation: Relation to parent
 """
 
-Slice.embedded_required [1] -- EmbeddedRequired._parent [1]
+Slice.embedded_required [1] -- EmbeddedRequired.parent [1]
 """
 Peer relation: Relation to parent
 """
 
-Slice.embedded_sequence [0:] -- EmbeddedSequence._parent [1]
+Slice.embedded_sequence [0:] -- EmbeddedSequence.parent [1]
 """
 Peer relation: Relation to parent
 """

@@ -19,9 +19,7 @@ import git_ops::slice
 
 entity Slice extends git_ops::slice::SliceObjectABC:
     """
-
-        Main slice.
-    
+    Main slice.
 
     :attr description: A helpful description of the slice's function.
     :attr name: The name of the slice.

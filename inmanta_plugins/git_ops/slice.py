@@ -19,6 +19,7 @@ Contact: edvgui@gmail.com
 import contextlib
 import inspect
 import logging
+import textwrap
 import typing
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -171,6 +172,7 @@ class SliceEntitySchema:
         same relation.
     :attr base_entities: The entity schema matching the parent classes of
         the class for which this entity schema is emitted.
+    :attr sub_entities: The entity schemas which extend from this schema.
     :attr description: The description of the python class defining the
         entity, if there is any.
     :attr embedded_entities: A list of relations towards other slice entities.
@@ -181,6 +183,8 @@ class SliceEntitySchema:
     keys: Sequence[str]
     path: Sequence[str]
     base_entities: Sequence["SliceEntitySchema"]
+    sub_entities: list["SliceEntitySchema"]
+    parents: list["SliceEntitySchema"]
     description: str | None
     embedded_entities: Sequence[SliceEntityRelationSchema]
     attributes: Sequence[SliceEntityAttributeSchema]
@@ -216,6 +220,35 @@ class SliceEntitySchema:
 
         relations_by_name.update({attr.name: attr for attr in self.embedded_entities})
         return list(relations_by_name.values())
+
+    def all_parents(self) -> Sequence["SliceEntitySchema"]:
+        """
+        Get all the entities to which this entity is attached via a relation.
+        """
+        parents_by_path: dict[Sequence[str], SliceEntityScheme] = dict()
+
+        for sub_entity in self.sub_entities:
+            parents_by_path.update(
+                {tuple(parent.path + [parent.name]): parent}
+                for parent in sub_entity.parents
+            )
+
+        parents_by_path.update(
+            {tuple(parent.path + [parent.name]): parent}
+            for parent in self.parents
+        )
+        return list(parents_by_path.values())
+
+
+def docstring(c: type) -> str | None:
+    """
+    Extract the docstring of a class definition (if there is any). Format
+    it to remove the indentation.
+    """
+    if c.__doc__ is None:
+        return None
+
+    return textwrap.dedent(c.__doc__.strip("\n")).strip("\n")
 
 
 class SliceObjectABC(pydantic.BaseModel):
@@ -279,11 +312,17 @@ class SliceObjectABC(pydantic.BaseModel):
                 if inspect.isclass(base_class)
                 and issubclass(base_class, SliceObjectABC)
             ],
-            description=cls.__doc__,
+            sub_entities=list(),
+            description=docstring(cls),
             embedded_entities=embedded_entities,
             attributes=attributes,
         )
+        # Save entity into the cache
         setattr(cls, cached_attribute, entity_schema)
+
+        # Make sure that each parent entity knows about all its sub entities
+        for base_entity in entity_schema.base_entities:
+            base_entity.sub_entities.append(entity_schema)
 
         for attribute, info in cls.model_fields.items():
             python_type = info.annotation
@@ -360,6 +399,11 @@ class SliceObjectABC(pydantic.BaseModel):
             raise ValueError(
                 f"{cls}.{attribute} has an unsupported type annotation: {python_type}"
             )
+
+        # Register this entity as a parent of all the entities towards which we
+        # have a relation
+        for relation in embedded_entities:
+            relation.entity.parents.append(entity_schema)
 
         # Validate that the keys all match attributes
         attribute_names = [attr.name for attr in entity_schema.all_attributes()]

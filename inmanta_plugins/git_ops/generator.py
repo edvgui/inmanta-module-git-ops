@@ -116,7 +116,7 @@ def get_relation(
         added.
     """
     parent_relation = EntityRelation(
-        name="_parent",
+        name="parent",
         path=schema.entity.path,
         cardinality=(1, 1),
         description="Relation to parent",
@@ -184,7 +184,7 @@ def get_entity(
     for attribute in schema.attributes:
         get_attribute(attribute, entity=entity, builder=builder)
 
-    for relation in schema.embedded_entities:
+    for relation in schema.all_relations():
         builder.add_module_element(
             get_relation(
                 schema=relation,

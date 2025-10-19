@@ -17,39 +17,59 @@ Contact: edvgui@gmail.com
 """
 import git_ops::slice
 
+
+entity FolderFile extends File:
+end
+
+index FolderFile(parent, name)
+
+entity RootFolderFile extends File:
+end
+
+index RootFolderFile(parent, name)
+
+
 entity File extends PathABC:
     """
-
-        A text file in a folder, with its textual content.
-    
+    A text file in a folder, with its textual content.
 
     :attr content: The textual content of the file.
-    :rel _parent: Relation to parent
+    :rel parent: Relation to parent
     """
     string content
 end
 
-index File(name, _parent)
+index File(name, parent)
+
+entity FolderDirectory extends Folder:
+end
+
+index FolderDirectory(parent, name)
+
+
+entity RootFolderDirectory extends Folder:
+end
+
+index RootFolderDirectory(parent, name)
+
 
 entity Folder extends PathABC:
     """
+    A folder in the filesystem tree, containing files and other folders.
 
-        A folder in the filesystem tree, containing files and other folders.
-    
-
-    :rel _parent: Relation to parent
     :rel directories: A list of folder to manage within this folder.
     :rel files: A list of files to manage in the folder.
+    :rel parent: Relation to parent
     """
 end
 
-Folder.directories [0:] -- Folder._parent [1]
+Folder.directories [0:] -- FolderDirectory.parent [1]
 """
 A list of folder to manage within this folder.
 Peer relation: Relation to parent
 """
 
-Folder.files [0:] -- File._parent [1]
+Folder.files [0:] -- FolderFile.parent [1]
 """
 A list of files to manage in the folder.
 Peer relation: Relation to parent
@@ -57,11 +77,9 @@ Peer relation: Relation to parent
 
 entity PathABC extends git_ops::slice::SliceObjectABC:
     """
-
-        Base class for all files and directories represented in the slice.
-        This class contains all of the shared attributes that both files and
-        directories have.
-    
+    Base class for all files and directories represented in the slice.
+    This class contains all of the shared attributes that both files and
+    directories have.
 
     :attr group: The name or gid of the element group.
     :attr name: The name of the filesystem element.  This name must be unique within the folder this element is part of.
@@ -76,9 +94,7 @@ end
 
 entity RootFolder extends Folder:
     """
-
-        The root folder, and the root of the slice.
-    
+    The root folder, and the root of the slice.
 
     :attr root: The base path in the file system inside which this folder should be created.
     """
@@ -86,6 +102,18 @@ entity RootFolder extends Folder:
 end
 
 index RootFolder(root, name)
+
+RootFolder.directories [0:] -- RootFolderDirectory.parent [1]
+"""
+A list of folder to manage within this folder.
+Peer relation: Relation to parent
+"""
+
+RootFolder.files [0:] -- RootFolderFile.parent [1]
+"""
+A list of files to manage in the folder.
+Peer relation: Relation to parent
+"""
 
 implement File using parents
 
