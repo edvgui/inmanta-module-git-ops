@@ -245,7 +245,11 @@ class SliceEntitySchema:
         return itertools.chain(
             self.parent_entities,
             *[sub_entity.all_parents() for sub_entity in self.sub_entities],
-            [SliceEntityParentSchema(name="__root__", entity=sub_entity) for sub_entity in self.sub_entities if not sub_entity.embedded_slice],
+            [
+                SliceEntityParentSchema(name="__root__", entity=sub_entity)
+                for sub_entity in self.sub_entities
+                if not sub_entity.embedded_slice
+            ],
         )
 
     def has_many_parents(self) -> bool:
@@ -277,9 +281,10 @@ def docstring(c: type) -> str | None:
 class EmbeddedSliceObjectABC(pydantic.BaseModel):
     """
     Base class for all slice objects which are nested inside another slice.
-    
+
     This class should be extended by any configuration object that is part of any slice.
     """
+
     keys: typing.ClassVar[Sequence[str]] = tuple()
 
     operation: SkipJsonSchema[str] = pydantic.Field(
@@ -377,7 +382,9 @@ class EmbeddedSliceObjectABC(pydantic.BaseModel):
                 and origin in [Sequence, list, typing.Sequence]
                 and (args := typing.get_args(python_type)) is not None
             ):
-                if inspect.isclass(args[0]) and issubclass(args[0], EmbeddedSliceObjectABC):
+                if inspect.isclass(args[0]) and issubclass(
+                    args[0], EmbeddedSliceObjectABC
+                ):
                     embedded_entities.append(
                         SliceEntityRelationSchema(
                             name=attribute,
@@ -392,7 +399,9 @@ class EmbeddedSliceObjectABC(pydantic.BaseModel):
             # Optional relation
             with contextlib.suppress(ValueError):
                 optional = get_optional_type(python_type)
-                if inspect.isclass(optional) and issubclass(optional, EmbeddedSliceObjectABC):
+                if inspect.isclass(optional) and issubclass(
+                    optional, EmbeddedSliceObjectABC
+                ):
                     embedded_entities.append(
                         SliceEntityRelationSchema(
                             name=attribute,
@@ -405,7 +414,9 @@ class EmbeddedSliceObjectABC(pydantic.BaseModel):
                     continue
 
             # Required relation
-            if inspect.isclass(python_type) and issubclass(python_type, EmbeddedSliceObjectABC):
+            if inspect.isclass(python_type) and issubclass(
+                python_type, EmbeddedSliceObjectABC
+            ):
                 embedded_entities.append(
                     SliceEntityRelationSchema(
                         name=attribute,

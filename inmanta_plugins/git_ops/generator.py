@@ -19,6 +19,7 @@ Contact: edvgui@gmail.com
 from collections.abc import Sequence
 
 from inmanta_module_factory.builder import InmantaModuleBuilder
+from inmanta_module_factory.helpers import utils
 from inmanta_module_factory.inmanta import (
     Attribute,
     Entity,
@@ -35,7 +36,6 @@ from inmanta_module_factory.inmanta import (
     InmantaStringType,
     InmantaType,
 )
-from inmanta_module_factory.helpers import utils
 
 from inmanta.ast.type import (
     Bool,
