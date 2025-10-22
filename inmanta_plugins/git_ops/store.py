@@ -118,7 +118,6 @@ class SliceFile[S: slice.SliceObjectABC]:
 
         # Read the slice content
         attributes = self.read()
-        attributes["version"] = version
 
         # Empty dict means the slice has been deleted
         deleted = attributes == {}
@@ -453,6 +452,7 @@ class SliceStore[S: slice.SliceObjectABC]:
                 )
 
             # Merge the current and previous slices together
+            attributes["version"] = current.version
             self.slices[s] = Slice(
                 name=s,
                 store_name=self.name,

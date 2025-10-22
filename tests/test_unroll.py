@@ -21,12 +21,7 @@ import pathlib
 
 import pytest
 import yaml
-from inmanta_plugins.example.slices.recursive import (
-    EmbeddedOptional,
-    EmbeddedRequired,
-    EmbeddedSequence,
-    Slice,
-)
+from inmanta_plugins.example.slices.recursive import EmbeddedSlice, Slice
 from pytest_inmanta.plugin import Project
 
 from inmanta_plugins.git_ops import const
@@ -71,6 +66,7 @@ def test_unroll_slices(
                         "unique_id": unique_id,
                         "operation": attributes["operation"],
                         "path": attributes["path"],
+                        "version": attributes["version"],
                         "embedded_required": attributes["embedded_required"],
                         "embedded_optional": attributes["embedded_optional"],
                         "embedded_sequence": attributes["embedded_sequence"],
@@ -88,7 +84,7 @@ def test_unroll_slices(
     # Add some one slice to the folder
     s1_obj = Slice(
         name="a",
-        embedded_required=EmbeddedRequired(
+        embedded_required=EmbeddedSlice(
             name="aa",
         ),
     )
@@ -111,6 +107,7 @@ def test_unroll_slices(
         "unique_id": 0,
         "operation": "create",
         "path": ".",
+        "version": 1,
         "embedded_required": {
             "operation": "create",
             "path": "embedded_required",
@@ -126,7 +123,7 @@ def test_unroll_slices(
     # Add some another slice to the folder
     s2_obj = Slice(
         name="b",
-        embedded_required=EmbeddedRequired(
+        embedded_required=EmbeddedSlice(
             name="bb",
         ),
     )
@@ -149,6 +146,7 @@ def test_unroll_slices(
         "unique_id": 0,
         "operation": "create",
         "path": ".",
+        "version": 1,
         "embedded_required": {
             "operation": "create",
             "path": "embedded_required",
@@ -182,6 +180,7 @@ def test_unroll_slices(
         "unique_id": 1,
         "operation": "create",
         "path": ".",
+        "version": 1,
         "embedded_required": {
             "operation": "create",
             "path": "embedded_required",
@@ -250,8 +249,8 @@ def test_unroll_slices(
     # Update first slice
     s1_obj = Slice(**yaml.safe_load(s1.read_text()))
     s1_obj.description = "Updated"
-    s1_obj.embedded_optional = EmbeddedOptional(name="ab")
-    s1_obj.embedded_sequence = [EmbeddedSequence(name="ac")]
+    s1_obj.embedded_optional = EmbeddedSlice(name="ab")
+    s1_obj.embedded_sequence = [EmbeddedSlice(name="ac")]
     s1.write_text(yaml.safe_dump(s1_obj.model_dump(mode="json")))
 
     # Sync changes
@@ -269,6 +268,7 @@ def test_unroll_slices(
         "unique_id": 0,
         "operation": "update",
         "path": ".",
+        "version": 2,
         "embedded_required": {
             "operation": "update",
             "path": "embedded_required",
@@ -306,6 +306,7 @@ def test_unroll_slices(
         "unique_id": 1,
         "operation": "create",
         "path": ".",
+        "version": 1,
         "embedded_required": {
             "operation": "create",
             "path": "embedded_required",
@@ -338,6 +339,7 @@ def test_unroll_slices(
         "unique_id": 0,
         "operation": "delete",
         "path": ".",
+        "version": 3,
         "embedded_required": {
             "operation": "delete",
             "path": "embedded_required",

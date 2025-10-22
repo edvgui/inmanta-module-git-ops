@@ -463,6 +463,7 @@ class SliceObjectABC(EmbeddedSliceObjectABC):
     version: SkipJsonSchema[int] = pydantic.Field(
         default=0,
         description="The version of this slice.  Every time the slice source is modified, it is incremented.",
+        exclude=True,
     )
 
     @classmethod

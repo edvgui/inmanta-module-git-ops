@@ -18,7 +18,7 @@ Contact: edvgui@gmail.com
 import git_ops::slice
 import std
 
-entity EmbeddedSlice extends NamedSlice, git_ops::slice::SliceObjectABC:
+entity EmbeddedSlice extends NamedSlice:
     """
     Base class for all slices embedded into a parent slice.
 
@@ -49,7 +49,7 @@ end
 
 index EmbeddedSliceRecursiveSlice(name, parent)
 
-entity NamedSlice extends git_ops::slice::SliceObjectABC:
+entity NamedSlice extends git_ops::slice::EmbeddedSliceObjectABC:
     """
     Base class for all slices identified with a name.
 
