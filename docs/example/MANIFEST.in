@@ -1,0 +1,10 @@
+include inmanta_plugins/example/setup.cfg
+include inmanta_plugins/example/py.typed
+recursive-include inmanta_plugins/example/model *.cf
+graft inmanta_plugins/example/files
+graft inmanta_plugins/example/templates
+graft docs
+graft examples
+graft tests
+include README.md
+include CHANGELOG.md

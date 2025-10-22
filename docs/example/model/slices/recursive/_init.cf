@@ -1,0 +1,155 @@
+"""
+Copyright 2025 Guillaume Everarts de Velp
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Contact: edvgui@gmail.com
+"""
+import git_ops::slice
+import std
+
+entity EmbeddedSlice extends NamedSlice:
+    """
+    Base class for all slices embedded into a parent slice.
+
+    :attr unique_id: 
+    :rel recursive_slice: 
+    """
+    int? unique_id = null
+end
+
+EmbeddedSlice.recursive_slice [0:] -- EmbeddedSliceRecursiveSlice.parent [1]
+"""
+Peer relation: Relation to parent
+"""
+
+entity EmbeddedSliceRecursiveSlice extends EmbeddedSlice:
+    """
+    This entity has been generated because it's base entity:
+
+        example::slices::recursive::EmbeddedSlice
+
+    has multiple parent.  Or in other words, multiple entities
+    have a relation to this base entity, making it impossible
+    to define a unique parent relation.
+
+    :rel parent: Relation to parent
+    """
+end
+
+index EmbeddedSliceRecursiveSlice(name, parent)
+
+entity NamedSlice extends git_ops::slice::EmbeddedSliceObjectABC:
+    """
+    Base class for all slices identified with a name.
+
+    :attr description: 
+    :attr name: 
+    """
+    string? description = null
+    string name
+end
+
+entity Slice extends NamedSlice, git_ops::slice::SliceObjectABC:
+    """
+    Main slice.
+
+    :attr unique_id: 
+    :rel embedded_optional: 
+    :rel embedded_required: 
+    :rel embedded_sequence: 
+    """
+    int? unique_id = null
+end
+
+Slice.embedded_optional [0:1] -- SliceEmbeddedOptional.parent [1]
+"""
+Peer relation: Relation to parent
+"""
+
+Slice.embedded_required [1] -- SliceEmbeddedRequired.parent [1]
+"""
+Peer relation: Relation to parent
+"""
+
+Slice.embedded_sequence [0:] -- SliceEmbeddedSequence.parent [1]
+"""
+Peer relation: Relation to parent
+"""
+
+index Slice(name)
+
+entity SliceEmbeddedOptional extends EmbeddedSlice:
+    """
+    This entity has been generated because it's base entity:
+
+        example::slices::recursive::EmbeddedSlice
+
+    has multiple parent.  Or in other words, multiple entities
+    have a relation to this base entity, making it impossible
+    to define a unique parent relation.
+
+    :rel parent: Relation to parent
+    """
+end
+
+index SliceEmbeddedOptional(name, parent)
+
+entity SliceEmbeddedRequired extends EmbeddedSlice:
+    """
+    This entity has been generated because it's base entity:
+
+        example::slices::recursive::EmbeddedSlice
+
+    has multiple parent.  Or in other words, multiple entities
+    have a relation to this base entity, making it impossible
+    to define a unique parent relation.
+
+    :rel parent: Relation to parent
+    """
+end
+
+index SliceEmbeddedRequired(name, parent)
+
+entity SliceEmbeddedSequence extends EmbeddedSlice:
+    """
+    This entity has been generated because it's base entity:
+
+        example::slices::recursive::EmbeddedSlice
+
+    has multiple parent.  Or in other words, multiple entities
+    have a relation to this base entity, making it impossible
+    to define a unique parent relation.
+
+    :rel parent: Relation to parent
+    """
+end
+
+index SliceEmbeddedSequence(name, parent)
+
+implement EmbeddedSlice using std::none, parents
+
+implement EmbeddedSliceRecursiveSlice using parents
+
+implement NamedSlice using std::none, parents
+
+implement Slice using std::none, parents
+
+implement SliceEmbeddedOptional using parents
+
+implement SliceEmbeddedRequired using parents
+
+implement SliceEmbeddedSequence using parents
+
+# This file has been generated using inmanta-module-factory==3.0.0
+# <IMF-GENERATED-FILE/>

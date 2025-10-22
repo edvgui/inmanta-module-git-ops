@@ -20,6 +20,7 @@ import collections
 import json
 import pathlib
 import re
+import typing
 from dataclasses import dataclass
 
 import pydantic
@@ -29,15 +30,15 @@ from inmanta_plugins.config.const import InmantaPath, SystemPath
 
 from inmanta.compiler import finalizer
 from inmanta.util import dict_path
-from inmanta_plugins.git_ops import Slice, const
+from inmanta_plugins.git_ops import Slice, const, slice
 
 # Dict registering all the slice stores when they are being created
 # This allows to find the store back, to access its slices.
-SLICE_STORE_REGISTRY: dict[str, "SliceStore"] = {}
+SLICE_STORE_REGISTRY: dict[str, "SliceStore[slice.SliceObjectABC]"] = {}
 
 
 @dataclass(frozen=True, kw_only=True)
-class SliceFile:
+class SliceFile[S: slice.SliceObjectABC]:
     """
     Represent a file containing a slice definition.
     """
@@ -46,6 +47,7 @@ class SliceFile:
     name: str
     version: int | None
     extension: str
+    schema: type[S]
 
     def read(self) -> dict:
         """
@@ -88,9 +90,14 @@ class SliceFile:
             name=self.name,
             version=version,
             extension=self.extension,
+            schema=self.schema,
         )
 
-    def emit_slice(self, store_name: str, default_version: int | None = None) -> Slice:
+    def emit_slice(
+        self,
+        store_name: str,
+        default_version: int | None = None,
+    ) -> Slice:
         """
         Construct the slice containing in this file.  If the slice file is not
         versioned (source slice) then assign the given default version. If no
@@ -113,16 +120,29 @@ class SliceFile:
         # Read the slice content
         attributes = self.read()
 
+        # Empty dict means the slice has been deleted
+        deleted = attributes == {}
+
+        if not deleted:
+            # Validate the attributes from the file, and insert any default values in the attributes
+            attributes = (
+                pydantic.TypeAdapter(self.schema)
+                .validate_python(attributes)
+                .model_dump(mode="json")
+            )
+
         return Slice(
             name=self.name,
             store_name=store_name,
             version=version,
             attributes=attributes,
-            deleted=not attributes,
+            deleted=deleted,
         )
 
     @classmethod
-    def from_path(cls, file: pathlib.Path) -> "SliceFile":
+    def from_path[S: slice.SliceObjectABC](
+        cls, file: pathlib.Path, schema: type[S]
+    ) -> "SliceFile[S]":
         """
         Parse the name of a file containing a slice.  The name of the file
         should contain the name of the slice, optionally the version, and
@@ -147,10 +167,11 @@ class SliceFile:
             name=matched.group("name"),
             version=int(version) if version is not None else None,
             extension=matched.group("extension"),
+            schema=schema,
         )
 
 
-class SliceStore:
+class SliceStore[S: slice.SliceObjectABC]:
     """
     Store slices loaded from file into memory, keep track of their changes, and
     write them back to their original files at the end of the compile.
@@ -158,8 +179,10 @@ class SliceStore:
 
     def __init__(
         self,
+        *,
         name: str,
         folder: SystemPath | InmantaPath,
+        schema: type[S],
     ) -> None:
         """
         :param name: The name of the slice store, used to identify the
@@ -168,18 +191,18 @@ class SliceStore:
             can be found.  Files in that folder should be valid yaml.
         """
         self.name = name
+        self.schema = schema
 
         # The source folder and the slice files contained in it contain
         # user input.  The content of these files can be updated by plugins
         # while the slice is being activated.  Once the slice is active, it
         # is moved to the active slice directory and can not be modified
-        self.source_path = pathlib.Path(resolve_path(folder))
+        self._folder = folder
+        self._source_path: pathlib.Path | None = None
         self.source_slice_files: dict[str, SliceFile] | None = None
         self.source_slices: dict[str, Slice] | None = None
 
-        self.active_path = pathlib.Path(
-            resolve_path(f"inmanta:///git_ops/active/{self.name}/")
-        )
+        self._active_path: pathlib.Path | None = None
         self.active_slice_files: dict[str, list[SliceFile]] | None = None
         self.active_slices: dict[tuple[str, int], Slice] | None = None
 
@@ -188,6 +211,28 @@ class SliceStore:
         self.slices: dict[str, Slice] | None = None
 
         self.register_store()
+
+    @property
+    def source_path(self) -> pathlib.Path:
+        """
+        Lazy resolution of the source path, to allow constructing the slice object
+        outside of an inmanta compile.
+        """
+        if self._source_path is None:
+            self._source_path = pathlib.Path(resolve_path(self._folder))
+        return self._source_path
+
+    @property
+    def active_path(self) -> pathlib.Path:
+        """
+        Lazy resolution of the active path, to allow constructing the slice object
+        outside of an inmanta compile.
+        """
+        if self._active_path is None:
+            self._active_path = pathlib.Path(
+                resolve_path(f"inmanta:///git_ops/active/{self.name}/")
+            )
+        return self._active_path
 
     def register_store(self) -> None:
         """
@@ -223,7 +268,7 @@ class SliceStore:
                 # Hidden file, ignore it
                 continue
 
-            slice_file = SliceFile.from_path(file)
+            slice_file = SliceFile.from_path(file, self.schema)
             self.active_slice_files[slice_file.name].append(slice_file)
 
         return self.active_slice_files
@@ -247,8 +292,12 @@ class SliceStore:
         """
         active_slices = self.load_active_slices()
         if name not in active_slices:
-            raise LookupError(
-                f"Can not find any slice named {name} in slice store {self.name}"
+            return Slice(
+                name=name,
+                store_name=self.name,
+                version=0,
+                attributes={},
+                deleted=True,
             )
 
         slices = sorted(
@@ -278,7 +327,7 @@ class SliceStore:
                 # Hidden file, ignore it
                 continue
 
-            slice_file = SliceFile.from_path(file)
+            slice_file = SliceFile.from_path(file, self.schema)
             self.source_slice_files[slice_file.name] = slice_file
 
         return self.source_slice_files
@@ -357,38 +406,56 @@ class SliceStore:
             slices |= self.load_source_slices().keys()
 
         self.slices: dict[str, Slice] = {}
-        for slice in slices:
+        for s in slices:
+            latest = self.get_latest_slice(s)
             if const.COMPILE_MODE in [const.COMPILE_UPDATE, const.COMPILE_SYNC]:
-                current = self.load_source_slices()[slice]
+                current = self.load_source_slices()[s]
             else:
-                current = self.get_latest_slice(slice)
+                current = latest
 
-            previous = sorted(
-                active_slices.get(slice, []),
-                key=lambda s: s.version,
-                reverse=True,
-            )
+            previous = [
+                s.attributes
+                for s in sorted(
+                    active_slices.get(s, []),
+                    key=lambda s: s.version,
+                    reverse=True,
+                )
+            ]
+            if current == latest:
+                previous = previous[1:]
+
+            while len(previous) >= 2:
+                p_current = previous[0]
+                p_previous = previous[1]
+                previous = [
+                    merge_attributes(
+                        p_current,
+                        p_previous,
+                        operation="delete",
+                        path=dict_path.NullPath(),
+                        schema=self.schema.entity_schema(),
+                    ),
+                    *previous[2:],
+                ]
 
             if current.deleted:
                 # We need to get the attributes of the last undeleted
                 # version, otherwise we don't know what we have to delete
-                attributes = merge_attributes(
-                    current=previous[0].attributes,
-                    previous=[p.attributes for p in previous[1:]],
-                    path=dict_path.NullPath(),
-                )
-                attributes["_purged"] = True
+                attributes = previous[0]
             else:
                 # Normal merge
                 attributes = merge_attributes(
                     current=current.attributes,
-                    previous=[p.attributes for p in previous],
+                    previous=previous[0] if previous else None,
+                    operation="update" if previous else "create",
                     path=dict_path.NullPath(),
+                    schema=self.schema.entity_schema(),
                 )
 
             # Merge the current and previous slices together
-            self.slices[slice] = Slice(
-                name=slice,
+            attributes["version"] = current.version
+            self.slices[s] = Slice(
+                name=s,
                 store_name=self.name,
                 version=current.version,
                 attributes=attributes,
@@ -433,6 +500,7 @@ class SliceStore:
                 name=slice.name,
                 version=slice.version,
                 extension="json",
+                schema=self.schema,
             )
             slice_file.write(slice.attributes)
 
@@ -528,7 +596,7 @@ class SliceStore:
             return default
 
 
-def get_store(store_name: str) -> SliceStore:
+def get_store(store_name: str) -> SliceStore[slice.SliceObjectABC]:
     """
     Get the store with the given name, raise a LookupError if it
     doesn't exist.
@@ -557,11 +625,24 @@ def persist_store() -> None:
         store.clear()
 
 
+@finalizer
+def clear_project_paths() -> None:
+    """
+    At the end of the compile, reset the paths that have been calculated based
+    on the project dir.
+    """
+    for store in SLICE_STORE_REGISTRY.values():
+        store._source_path = None
+        store._active_path = None
+
+
 def merge_attributes(
     current: dict,
-    previous: list[dict],
+    previous: dict | None,
     *,
+    operation: typing.Literal["create", "update", "delete"],
     path: dict_path.DictPath,
+    schema: slice.SliceEntitySchema,
 ) -> dict:
     """
     Construct a merge of the current and previous attributes, inserting
@@ -571,66 +652,109 @@ def merge_attributes(
     by the key that leads to it.  Any other type will be considered to be
     a primitive and the value of the current will be kept unmodified.
     """
-    merged = dict()
+    merged = {
+        "operation": operation,
+        "path": str(path),
+    }
 
-    keys = set(current.keys())
-    for p in previous:
-        keys |= p.keys()
+    # Go over all attributes, the merged value will always be the value
+    # from the current
+    for attribute in schema.all_attributes():
+        if attribute.name in ["operation", "path"]:
+            continue
+        merged[attribute.name] = current.get(attribute.name)
 
-    for k in keys:
-        c = current.get(k)
-        p = [v for p in previous if (v := p.get(k)) is not None]
-
-        if isinstance(c, (str, int, float, bool)):
-            # Primitive, there is no merging, we just use the current
-            merged[k] = c
+    # Go over all relations
+    for relation in schema.all_relations():
+        cardinality = (relation.cardinality_min, relation.cardinality_max)
+        if cardinality == (1, 1):
+            # The relation is mandatory, we will always have the
+            # current attributes
+            merged[relation.name] = merge_attributes(
+                current=typing.cast(dict, current[relation.name]),
+                previous=(
+                    typing.cast(dict, previous[relation.name])
+                    if previous is not None
+                    else None
+                ),
+                operation=operation,
+                path=path + dict_path.InDict(relation.name),
+                schema=relation.entity,
+            )
             continue
 
-        if isinstance(c, list):
-            # List, we can also not merge it, whether it is a list of
-            # primitives or not because we currently don't have any
-            # schema to identify nested slices
-            merged[k] = c
-            continue
-
-        if len(p) == 0:
-            # No previous values, whatever we have for current is all we
-            # have
-            merged[k] = c
-            continue
-
-        if c is None:
-            # Current state is either a None primitive, or a removed
-            # value that a previous state still has.
-            # If the previous states are dicts, we need to merge them
-            # and insert them into the current, marked as "purged"
-            try:
-                previous_dicts = pydantic.TypeAdapter(list[dict]).validate_python(p)
-                if len(previous_dicts) == 1:
-                    v = dict(previous_dicts[0])
-                    v["_path"] = str(path + dict_path.InDict(k))
-                else:
-                    v = merge_attributes(
-                        current=dict(previous_dicts[0]),
-                        previous=previous_dicts[1:],
-                        path=path + dict_path.InDict(k),
+        if cardinality == (0, 1):
+            # Optional relation, see if the current value is still set, if it
+            # is not, take the previous one and mark is as "delete"
+            current_value = typing.cast(dict | None, current.get(relation.name))
+            previous_value = (
+                typing.cast(dict | None, previous.get(relation.name))
+                if previous is not None
+                else None
+            )
+            match (current_value, previous_value):
+                case None, None:
+                    merged[relation.name] = None
+                case None, dict():
+                    # Previous value should already have delete operation set
+                    assert previous_value["operation"] == "delete"
+                    merged[relation.name] = previous_value
+                case dict(), _:
+                    merged[relation.name] = merge_attributes(
+                        current_value,
+                        previous_value,
+                        operation=(
+                            operation
+                            if operation == "delete"
+                            else "create" if previous_value is None else "update"
+                        ),
+                        path=path + dict_path.InDict(relation.name),
+                        schema=relation.entity,
                     )
+                case _:
+                    raise ValueError()
+            continue
 
-                v["_purged"] = True
-                merged[k] = v
-                continue
-            except pydantic.ValidationError:
-                # The previous doesn't contain dicts, we consider our
-                # None to be a primitive
-                merged[k] = c
-                continue
+        # Relation, attribute should be a list, and should be merged
+        current_values = {
+            tuple(
+                (k, str(current_value[k])) for k in relation.entity.keys
+            ): current_value
+            for current_value in typing.cast(list[dict], current[relation.name])
+        }
+        previous_values = {
+            tuple(
+                (k, str(previous_value[k])) for k in relation.entity.keys
+            ): previous_value
+            for previous_value in typing.cast(
+                list[dict], previous[relation.name] if previous is not None else []
+            )
+        }
+        merged_relation: list[dict] = []
+        merged[relation.name] = merged_relation
+        for key in current_values.keys() | previous_values.keys():
+            current_value = current_values.get(key)
+            previous_value = previous_values.get(key)
+            match (current_value, previous_value):
+                case None, dict():
+                    # Previous value should already have delete operation set
+                    assert previous_value["operation"] == "delete"
+                    merged_relation.append(previous_value)
+                case dict(), _:
+                    merged_relation.append(
+                        merge_attributes(
+                            current_value,
+                            previous_value,
+                            operation=(
+                                operation
+                                if operation == "delete"
+                                else "create" if previous_value is None else "update"
+                            ),
+                            path=path + dict_path.KeyedList(relation.name, key),
+                            schema=relation.entity,
+                        )
+                    )
+                case _:
+                    raise ValueError()
 
-        # From now on, we should only have dicts, we recurse the merging
-        merged[k] = merge_attributes(
-            current=pydantic.TypeAdapter(dict).validate_python(c),
-            previous=pydantic.TypeAdapter(list[dict]).validate_python(p),
-            path=path + dict_path.InDict(k),
-        )
-
-    merged["_path"] = str(path)
     return merged

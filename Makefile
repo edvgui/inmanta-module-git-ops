@@ -5,12 +5,11 @@ flake8 = flake8 inmanta_plugins tests
 pyupgrade = pyupgrade --py312-plus $$(find inmanta_plugins tests -type f -name '*.py')
 
 format:
-	$(isort)
-	$(black_preview)
-	$(black)
-	$(flake8)
-	$(pyupgrade)
+	uv run $(isort)
+	uv run $(black_preview)
+	uv run $(black)
+	uv run $(flake8)
+	uv run $(pyupgrade)
 
 install:
-	pip install -U pip setuptools
-	pip install -U --upgrade-strategy=eager -r requirements.dev.txt -c requirements.txt -e .
+	uv pip install -U -r requirements.dev.txt -c requirements.txt -e .

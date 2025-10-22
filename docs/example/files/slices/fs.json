@@ -1,0 +1,187 @@
+{
+  "$defs": {
+    "File": {
+      "description": "A text file in a folder, with its textual content.",
+      "properties": {
+        "name": {
+          "description": "The name of the filesystem element.  This name must be unique within the folder this element is part of.",
+          "title": "Name",
+          "type": "string"
+        },
+        "permissions": {
+          "default": "770",
+          "description": "The permissions to configure for this element.",
+          "title": "Permissions",
+          "type": "string"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The name or uid of the element owner.",
+          "title": "Owner"
+        },
+        "group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The name or gid of the element group.",
+          "title": "Group"
+        },
+        "content": {
+          "default": "",
+          "description": "The textual content of the file.",
+          "title": "Content",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "File",
+      "type": "object"
+    },
+    "Folder": {
+      "description": "A folder in the filesystem tree, containing files and other folders.",
+      "properties": {
+        "name": {
+          "description": "The name of the filesystem element.  This name must be unique within the folder this element is part of.",
+          "title": "Name",
+          "type": "string"
+        },
+        "permissions": {
+          "default": "770",
+          "description": "The permissions to configure for this element.",
+          "title": "Permissions",
+          "type": "string"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The name or uid of the element owner.",
+          "title": "Owner"
+        },
+        "group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The name or gid of the element group.",
+          "title": "Group"
+        },
+        "files": {
+          "description": "A list of files to manage in the folder.",
+          "items": {
+            "$ref": "#/$defs/File"
+          },
+          "title": "Files",
+          "type": "array"
+        },
+        "directories": {
+          "description": "A list of folder to manage within this folder.",
+          "items": {
+            "$ref": "#/$defs/Folder"
+          },
+          "title": "Directories",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Folder",
+      "type": "object"
+    }
+  },
+  "description": "The root folder, and the root of the slice.",
+  "properties": {
+    "name": {
+      "description": "The name of the filesystem element.  This name must be unique within the folder this element is part of.",
+      "title": "Name",
+      "type": "string"
+    },
+    "permissions": {
+      "default": "770",
+      "description": "The permissions to configure for this element.",
+      "title": "Permissions",
+      "type": "string"
+    },
+    "owner": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The name or uid of the element owner.",
+      "title": "Owner"
+    },
+    "group": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The name or gid of the element group.",
+      "title": "Group"
+    },
+    "files": {
+      "description": "A list of files to manage in the folder.",
+      "items": {
+        "$ref": "#/$defs/File"
+      },
+      "title": "Files",
+      "type": "array"
+    },
+    "directories": {
+      "description": "A list of folder to manage within this folder.",
+      "items": {
+        "$ref": "#/$defs/Folder"
+      },
+      "title": "Directories",
+      "type": "array"
+    },
+    "root": {
+      "description": "The base path in the file system inside which this folder should be created.",
+      "title": "Root",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "root"
+  ],
+  "title": "RootFolder",
+  "type": "object"
+}

@@ -15,13 +15,3 @@ limitations under the License.
 
 Contact: edvgui@gmail.com
 """
-
-from pytest_inmanta.plugin import Project
-
-
-def test_basics(project: Project) -> None:
-    project.compile("import git_ops")
-
-
-# This file has been generated using inmanta-module-factory==3.0.0
-# <IMF-GENERATED-FILE/>

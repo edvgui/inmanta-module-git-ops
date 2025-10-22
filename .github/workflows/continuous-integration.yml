@@ -12,20 +12,25 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
-      - name: Set up Python 3.12
+
+      - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: 3.12
           architecture: 'x64'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
       - name: Install module and its dependencies
         run: |
-          python3.12 -m venv venv
-          venv/bin/pip install -U pip -r requirements.dev.txt -e . -c requirements.txt
-          venv/bin/pip list | grep inmanta
+          uv venv
+          uv pip install -r requirements.dev.txt -e . -c requirements.txt
+
       - name: Lint with flake8
         run: |
-          venv/bin/flake8 tests inmanta_plugins
-          venv/bin/pyupgrade --py312-plus $(find inmanta_plugins tests -type f -name '*.py')
+          uv run flake8 tests inmanta_plugins
+          uv run pyupgrade --py312-plus $(find inmanta_plugins tests -type f -name '*.py')
 
   tests:
 
@@ -33,17 +38,21 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
-      - name: Set up Python 3.12
+
+      - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: 3.12
           architecture: 'x64'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
       - name: Install module and its dependencies
         run: |
-          python3.12 -m venv venv
-          venv/bin/pip install -U pip -r requirements.dev.txt -e . -c requirements.txt
-          venv/bin/pip list | grep inmanta
+          uv venv
+          uv pip install -r requirements.dev.txt -e . -c requirements.txt
+
       - name: Run tests
         run: |
-          echo $UID > /proc/self/loginuid
-          venv/bin/pytest tests -vvv --log-cli-level debug
+          uv run pytest tests -vvv --log-cli-level debug

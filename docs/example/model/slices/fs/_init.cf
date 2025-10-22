@@ -1,0 +1,109 @@
+"""
+Copyright 2025 Guillaume Everarts de Velp
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Contact: edvgui@gmail.com
+"""
+import git_ops::slice
+import std
+
+entity File extends PathABC:
+    """
+    A text file in a folder, with its textual content.
+
+    :attr content: The textual content of the file.
+    :rel parent: Relation to parent
+    """
+    string content
+end
+
+index File(name, parent)
+
+entity Folder extends PathABC:
+    """
+    A folder in the filesystem tree, containing files and other folders.
+
+    :rel directories: A list of folder to manage within this folder.
+    :rel files: A list of files to manage in the folder.
+    """
+end
+
+Folder.directories [0:] -- FolderDirectories.parent [1]
+"""
+A list of folder to manage within this folder.
+Peer relation: Relation to parent
+"""
+
+Folder.files [0:] -- File.parent [1]
+"""
+A list of files to manage in the folder.
+Peer relation: Relation to parent
+"""
+
+entity FolderDirectories extends Folder:
+    """
+    This entity has been generated because it's base entity:
+
+        example::slices::fs::Folder
+
+    has multiple parent.  Or in other words, multiple entities
+    have a relation to this base entity, making it impossible
+    to define a unique parent relation.
+
+    :rel parent: Relation to parent
+    """
+end
+
+index FolderDirectories(name, parent)
+
+entity PathABC extends git_ops::slice::EmbeddedSliceObjectABC:
+    """
+    Base class for all files and directories represented in the slice.
+    This class contains all of the shared attributes that both files and
+    directories have.
+
+    :attr group: The name or gid of the element group.
+    :attr name: The name of the filesystem element.  This name must be unique within the folder this element is part of.
+    :attr owner: The name or uid of the element owner.
+    :attr permissions: The permissions to configure for this element.
+    """
+    string? group = null
+    string name
+    string? owner = null
+    string permissions
+end
+
+entity RootFolder extends git_ops::slice::SliceObjectABC, Folder:
+    """
+    The root folder, and the root of the slice.
+
+    :attr root: The base path in the file system inside which this folder should be created.
+    """
+    string root
+end
+
+index RootFolder(name, root)
+
+implement File using std::none, parents
+
+implement Folder using std::none, parents
+
+implement FolderDirectories using parents
+
+implement PathABC using std::none, parents
+
+implement RootFolder using std::none, parents
+
+# This file has been generated using inmanta-module-factory==3.0.0
+# <IMF-GENERATED-FILE/>
