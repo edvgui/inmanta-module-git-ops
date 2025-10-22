@@ -16,6 +16,7 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 
+import json
 import pathlib
 
 from inmanta_module_factory.builder import InmantaModuleBuilder
@@ -57,3 +58,8 @@ def test_basics() -> None:
     )
 
     example_builder.upgrade_existing_module(example, fix_linting=False)
+
+    # Generate openapi definitions
+    schema_file = example_path / "files/slices/fs.json"
+    schema_file.parent.mkdir(parents=True, exist_ok=True)
+    schema_file.write_text(json.dumps(fs.RootFolder.model_json_schema(), indent=2))
