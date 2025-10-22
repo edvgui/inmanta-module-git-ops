@@ -18,6 +18,7 @@ Contact: edvgui@gmail.com
 
 import contextlib
 import inspect
+import itertools
 import logging
 import textwrap
 import typing
@@ -140,6 +141,21 @@ class SliceEntityRelationSchema:
 
 
 @dataclass(kw_only=True)
+class SliceEntityParentSchema:
+    """
+    Schema of a parent of an embedded slice.  The parent is another
+    entity referencing this slice for a specific relation.
+
+    :attr name: The name of the relation on the parent pointing towards
+        our embedded slice.
+    :attr entity: The parent entity schema.
+    """
+
+    name: str
+    entity: "SliceEntitySchema"
+
+
+@dataclass(kw_only=True)
 class SliceEntityAttributeSchema:
     """
     Schema of an attribute of a slice entity.  The difference
@@ -184,10 +200,11 @@ class SliceEntitySchema:
     path: Sequence[str]
     base_entities: Sequence["SliceEntitySchema"]
     sub_entities: list["SliceEntitySchema"]
-    parents: list["SliceEntitySchema"]
     description: str | None
+    parent_entities: list[SliceEntityParentSchema]
     embedded_entities: Sequence[SliceEntityRelationSchema]
     attributes: Sequence[SliceEntityAttributeSchema]
+    embedded_slice: bool = True
 
     def all_attributes(self) -> Sequence[SliceEntityAttributeSchema]:
         """
@@ -221,23 +238,29 @@ class SliceEntitySchema:
         relations_by_name.update({attr.name: attr for attr in self.embedded_entities})
         return list(relations_by_name.values())
 
-    def all_parents(self) -> Sequence["SliceEntitySchema"]:
+    def all_parents(self) -> typing.Iterator[SliceEntityParentSchema]:
         """
         Get all the entities to which this entity is attached via a relation.
         """
-        parents_by_path: dict[Sequence[str], SliceEntitySchema] = dict()
+        return itertools.chain(
+            self.parent_entities,
+            *[sub_entity.all_parents() for sub_entity in self.sub_entities],
+            [SliceEntityParentSchema(name="__root__", entity=sub_entity) for sub_entity in self.sub_entities if not sub_entity.embedded_slice],
+        )
 
-        for parent in self.parents:
-            parents_by_path.update(
-                {tuple(parent.path + [parent.name]): parent}
-            )
-
-            for sub_entity in parent.sub_entities:
-                parents_by_path.update(
-                    {tuple(sub_entity.path + [sub_entity.name]): sub_entity}
-                )
-
-        return list(parents_by_path.values())
+    def has_many_parents(self) -> bool:
+        """
+        Returns True if this entity schema is referenced via relations by more
+        than one parent slice.  If it is the case, the generator will need to
+        generate a dedicated entity for each relation.
+        """
+        all_parents = self.all_parents()
+        try:
+            next(all_parents)
+            next(all_parents)
+            return True
+        except StopIteration:
+            return False
 
 
 def docstring(c: type) -> str | None:
@@ -251,14 +274,12 @@ def docstring(c: type) -> str | None:
     return textwrap.dedent(c.__doc__.strip("\n")).strip("\n")
 
 
-class SliceObjectABC(pydantic.BaseModel):
+class EmbeddedSliceObjectABC(pydantic.BaseModel):
     """
-    Base class for all slice definitions.  This class should be extended
-    by any configuration object that is part of any slice.
-
-    :attr keys: The names of the attributes identifying the instances of this entity.
+    Base class for all slice objects which are nested inside another slice.
+    
+    This class should be extended by any configuration object that is part of any slice.
     """
-
     keys: typing.ClassVar[Sequence[str]] = tuple()
 
     operation: SkipJsonSchema[str] = pydantic.Field(
@@ -310,11 +331,11 @@ class SliceObjectABC(pydantic.BaseModel):
                 base_class.entity_schema()
                 for base_class in cls.__bases__
                 if inspect.isclass(base_class)
-                and issubclass(base_class, SliceObjectABC)
+                and issubclass(base_class, EmbeddedSliceObjectABC)
             ],
             sub_entities=list(),
-            parents=list(),
             description=docstring(cls),
+            parent_entities=list(),
             embedded_entities=embedded_entities,
             attributes=attributes,
         )
@@ -356,7 +377,7 @@ class SliceObjectABC(pydantic.BaseModel):
                 and origin in [Sequence, list, typing.Sequence]
                 and (args := typing.get_args(python_type)) is not None
             ):
-                if inspect.isclass(args[0]) and issubclass(args[0], SliceObjectABC):
+                if inspect.isclass(args[0]) and issubclass(args[0], EmbeddedSliceObjectABC):
                     embedded_entities.append(
                         SliceEntityRelationSchema(
                             name=attribute,
@@ -371,7 +392,7 @@ class SliceObjectABC(pydantic.BaseModel):
             # Optional relation
             with contextlib.suppress(ValueError):
                 optional = get_optional_type(python_type)
-                if inspect.isclass(optional) and issubclass(optional, SliceObjectABC):
+                if inspect.isclass(optional) and issubclass(optional, EmbeddedSliceObjectABC):
                     embedded_entities.append(
                         SliceEntityRelationSchema(
                             name=attribute,
@@ -384,7 +405,7 @@ class SliceObjectABC(pydantic.BaseModel):
                     continue
 
             # Required relation
-            if inspect.isclass(python_type) and issubclass(python_type, SliceObjectABC):
+            if inspect.isclass(python_type) and issubclass(python_type, EmbeddedSliceObjectABC):
                 embedded_entities.append(
                     SliceEntityRelationSchema(
                         name=attribute,
@@ -404,7 +425,12 @@ class SliceObjectABC(pydantic.BaseModel):
         # Register this entity as a parent of all the entities towards which we
         # have a relation
         for relation in embedded_entities:
-            relation.entity.parents.append(entity_schema)
+            relation.entity.parent_entities.append(
+                SliceEntityParentSchema(
+                    name=relation.name,
+                    entity=entity_schema,
+                )
+            )
 
         # Validate that the keys all match attributes
         attribute_names = [attr.name for attr in entity_schema.all_attributes()]
@@ -416,3 +442,20 @@ class SliceObjectABC(pydantic.BaseModel):
             )
 
         return entity_schema
+
+
+class SliceObjectABC(EmbeddedSliceObjectABC):
+    """
+    Base class for the root of any slice definition.
+    """
+
+    version: SkipJsonSchema[int] = pydantic.Field(
+        default=0,
+        description="The version of this slice.  Every time the slice source is modified, it is incremented.",
+    )
+
+    @classmethod
+    def entity_schema(cls) -> SliceEntitySchema:
+        schema = super().entity_schema()
+        schema.embedded_slice = False
+        return schema

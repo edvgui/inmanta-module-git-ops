@@ -118,6 +118,7 @@ class SliceFile[S: slice.SliceObjectABC]:
 
         # Read the slice content
         attributes = self.read()
+        attributes["version"] = version
 
         # Empty dict means the slice has been deleted
         deleted = attributes == {}

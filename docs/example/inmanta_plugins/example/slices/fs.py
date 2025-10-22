@@ -24,7 +24,7 @@ from collections.abc import Sequence
 from inmanta_plugins.git_ops import slice, store
 
 
-class PathABC(slice.SliceObjectABC):
+class PathABC(slice.EmbeddedSliceObjectABC):
     """
     Base class for all files and directories represented in the slice.
     This class contains all of the shared attributes that both files and
@@ -75,7 +75,7 @@ class Folder(PathABC):
     )
 
 
-class RootFolder(Folder):
+class RootFolder(slice.SliceObjectABC, Folder):
     """
     The root folder, and the root of the slice.
     """

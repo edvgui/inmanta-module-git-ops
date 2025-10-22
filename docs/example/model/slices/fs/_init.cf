@@ -23,9 +23,12 @@ entity File extends PathABC:
     A text file in a folder, with its textual content.
 
     :attr content: The textual content of the file.
+    :rel parent: Relation to parent
     """
     string content
 end
+
+index File(name, parent)
 
 entity Folder extends PathABC:
     """
@@ -36,35 +39,19 @@ entity Folder extends PathABC:
     """
 end
 
-Folder.directories [0:] -- FolderFolder.parent [1]
+Folder.directories [0:] -- FolderDirectories.parent [1]
 """
 A list of folder to manage within this folder.
 Peer relation: Relation to parent
 """
 
-Folder.files [0:] -- FolderFile.parent [1]
+Folder.files [0:] -- File.parent [1]
 """
 A list of files to manage in the folder.
 Peer relation: Relation to parent
 """
 
-entity FolderFile extends File:
-    """
-    This entity has been generated because it's base entity:
-
-        example::slices::fs::File
-
-    has multiple parent.  Or in other words, multiple entities
-    have a relation to this base entity, making it impossible
-    to define a unique parent relation.
-
-    :rel parent: Relation to parent
-    """
-end
-
-index FolderFile(name, parent)
-
-entity FolderFolder extends Folder:
+entity FolderDirectories extends Folder:
     """
     This entity has been generated because it's base entity:
 
@@ -78,9 +65,9 @@ entity FolderFolder extends Folder:
     """
 end
 
-index FolderFolder(name, parent)
+index FolderDirectories(name, parent)
 
-entity PathABC extends git_ops::slice::SliceObjectABC:
+entity PathABC extends git_ops::slice::EmbeddedSliceObjectABC:
     """
     Base class for all files and directories represented in the slice.
     This class contains all of the shared attributes that both files and
@@ -97,7 +84,7 @@ entity PathABC extends git_ops::slice::SliceObjectABC:
     string permissions
 end
 
-entity RootFolder extends Folder:
+entity RootFolder extends git_ops::slice::SliceObjectABC, Folder:
     """
     The root folder, and the root of the slice.
 
@@ -106,15 +93,13 @@ entity RootFolder extends Folder:
     string root
 end
 
-index RootFolder(root, name)
+index RootFolder(name, root)
 
 implement File using std::none, parents
 
 implement Folder using std::none, parents
 
-implement FolderFile using parents
-
-implement FolderFolder using parents
+implement FolderDirectories using parents
 
 implement PathABC using std::none, parents
 

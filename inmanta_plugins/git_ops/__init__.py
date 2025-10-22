@@ -85,7 +85,7 @@ def attributes(
     # Make sure the class is a valid slice
     from inmanta_plugins.git_ops import slice
 
-    if not issubclass(slice_object_cls, slice.SliceObjectABC):
+    if not issubclass(slice_object_cls, slice.EmbeddedSliceObjectABC):
         raise ValueError(
             f"Class {slice_object_type} (from {slice_object_type}) is not a valid Slice definition."
         )

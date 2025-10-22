@@ -44,24 +44,6 @@ class EmbeddedSlice(NamedSlice, slice.SliceObjectABC):
     recursive_slice: Sequence["EmbeddedSlice"] = []
 
 
-class EmbeddedRequired(EmbeddedSlice):
-    """
-    Embedded slice that is required.
-    """
-
-
-class EmbeddedOptional(EmbeddedSlice):
-    """
-    Embedded slice that is optional.
-    """
-
-
-class EmbeddedSequence(EmbeddedSlice):
-    """
-    Embedded slice that is part of a sequence.
-    """
-
-
 class Slice(NamedSlice, slice.SliceObjectABC):
     """
     Main slice.
@@ -69,6 +51,6 @@ class Slice(NamedSlice, slice.SliceObjectABC):
 
     unique_id: int | None = None
 
-    embedded_required: EmbeddedRequired
-    embedded_optional: EmbeddedOptional | None = None
-    embedded_sequence: Sequence[EmbeddedSequence] = []
+    embedded_required: EmbeddedSlice
+    embedded_optional: EmbeddedSlice | None = None
+    embedded_sequence: Sequence[EmbeddedSlice] = []

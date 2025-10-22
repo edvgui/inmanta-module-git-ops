@@ -17,9 +17,10 @@ Contact: edvgui@gmail.com
 """
 
 import pytest
-from pytest_inmanta.plugin import Project
 import yaml
 from inmanta_plugins.example.slices import fs
+from pytest_inmanta.plugin import Project
+
 from inmanta_plugins.git_ops import const
 
 

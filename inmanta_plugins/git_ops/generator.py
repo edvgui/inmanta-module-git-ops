@@ -24,6 +24,7 @@ from inmanta_module_factory.inmanta import (
     Entity,
     EntityRelation,
     Implement,
+    Implementation,
     Index,
     InmantaAdvancedType,
     InmantaBooleanType,
@@ -33,8 +34,8 @@ from inmanta_module_factory.inmanta import (
     InmantaListType,
     InmantaStringType,
     InmantaType,
-    Implementation,
 )
+from inmanta_module_factory.helpers import utils
 
 from inmanta.ast.type import (
     Bool,
@@ -123,14 +124,14 @@ def get_relation(
         description="Relation to parent",
     )
 
-    if len(schema.entity.all_parents()) > 1:
+    if schema.entity.has_many_parents():
         base = get_entity(
             schema=schema.entity,
             builder=builder,
             parent_relation=None,
         )
         embedded_entity = Entity(
-            name=parent.name + base.name,
+            name=parent.name + utils.inmanta_entity_name(schema.name),
             path=parent.path,
             parents=[base],
             description=(
@@ -145,7 +146,9 @@ def get_relation(
         builder.add_module_element(embedded_entity)
 
         key_fields = [
-            field for field in embedded_entity.all_fields() if field.name in schema.entity.keys
+            field
+            for field in embedded_entity.all_fields()
+            if field.name in schema.entity.keys
         ]
         if parent_relation is not None:
             key_fields.append(parent_relation)

@@ -28,11 +28,11 @@ FolderFactory.parent [1] -- Folder
 
 
 implementation construct_folder for FolderFactory:
-    folder = FolderFolder(
+    folder = FolderDirectories(
         parent=self.parent,
         **git_ops::attributes("example::slices::fs::Folder", self.attributes),
         files=[
-            FolderFile(**git_ops::attributes("example::slices::fs::File", file))
+            File(**git_ops::attributes("example::slices::fs::File", file))
             for file in self.attributes["files"]
         ],
     )
@@ -50,23 +50,12 @@ for slice in git_ops::unroll_slices("fs"):
     root = RootFolder(
         **git_ops::attributes("example::slices::fs::RootFolder", slice["attributes"]),
         files=[
-            FolderFile(**git_ops::attributes("example::slices::fs::File", file))
+            File(**git_ops::attributes("example::slices::fs::File", file))
             for file in slice["attributes"]["files"]
         ],
     )
 
-    for folder_attributes in slice["attributes"]["directories"]:
-        folder = FolderFolder(
-            parent=root,
-            **git_ops::attributes("example::slices::fs::Folder", folder_attributes),
-            files=[
-                FolderFile(**git_ops::attributes("example::slices::fs::File", file))
-                for file in folder_attributes["files"]
-            ],
-        )
-
-        for child_folder in folder_attributes["directories"]:
-            FolderFactory(attributes=child_folder, parent=folder)
-        end
+    for child_folder in slice["attributes"]["directories"]:
+        FolderFactory(attributes=child_folder, parent=root)
     end
 end
