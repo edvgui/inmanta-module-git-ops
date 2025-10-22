@@ -22,7 +22,7 @@ from collections.abc import Sequence
 from inmanta_plugins.git_ops import slice
 
 
-class NamedSlice(slice.SliceObjectABC):
+class NamedSlice(slice.EmbeddedSliceObjectABC):
     """
     Base class for all slices identified with a name.
     """
@@ -33,7 +33,7 @@ class NamedSlice(slice.SliceObjectABC):
     description: str | None = None
 
 
-class EmbeddedSlice(NamedSlice, slice.SliceObjectABC):
+class EmbeddedSlice(NamedSlice):
     """
     Base class for all slices embedded into a parent slice.
     """
