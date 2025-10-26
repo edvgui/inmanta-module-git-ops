@@ -95,7 +95,7 @@ entity RootFolder extends git_ops::slice::SliceObjectABC, Folder:
     string root
 end
 
-index RootFolder(root, name)
+index RootFolder(name, root)
 
 implement File using std::none, parents
 

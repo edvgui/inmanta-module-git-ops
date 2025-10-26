@@ -31,6 +31,8 @@ def test_basics() -> None:
         "operation",
         "path",
         "version",
+        "slice_store",
+        "slice_name",
         "name",
         "description",
         "unique_id",

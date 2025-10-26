@@ -466,10 +466,12 @@ class SliceObjectABC(EmbeddedSliceObjectABC):
         exclude=True,
     )
     slice_store: SkipJsonSchema[str] = pydantic.Field(
+        default="",
         description="The name of the store in which the instance of the slice is defined.",
         exclude=True,
     )
     slice_name: SkipJsonSchema[str] = pydantic.Field(
+        default="",
         description="The identifying name of the slice within its store.",
         exclude=True,
     )
