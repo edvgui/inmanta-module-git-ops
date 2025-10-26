@@ -35,6 +35,7 @@ from inmanta_module_factory.inmanta import (
     InmantaListType,
     InmantaStringType,
     InmantaType,
+    EntityField,
 )
 
 from inmanta.ast.type import (
@@ -145,19 +146,20 @@ def get_relation(
 
         builder.add_module_element(embedded_entity)
 
-        key_fields = [
-            field
-            for field in embedded_entity.all_fields()
-            if field.name in schema.entity.keys
-        ]
+        key_fields: dict[str, EntityField] = {}
+
         if parent_relation is not None:
-            key_fields.append(parent_relation)
+            key_fields[parent_relation.name] = parent_relation
+
+        for field in embedded_entity.all_fields():
+            if field.name in schema.entity.keys:
+                key_fields[field.name] = field
 
         builder.add_module_element(
             Index(
                 path=embedded_entity.path,
                 entity=embedded_entity,
-                fields=key_fields,
+                fields=key_fields.values(),
             )
         )
 
@@ -246,17 +248,20 @@ def get_entity(
 
     # Generate an index
     if slice_root or parent_relation is not None:
-        key_fields = [
-            field for field in entity.all_fields() if field.name in schema.keys
-        ]
+        key_fields: dict[str, EntityField] = {}
+
         if parent_relation is not None:
-            key_fields.append(parent_relation)
+            key_fields[parent_relation.name] = parent_relation
+
+        for field in entity.all_fields():
+            if field.name in schema.keys:
+                key_fields[field.name] = field
 
         builder.add_module_element(
             Index(
                 path=entity.path,
                 entity=entity,
-                fields=key_fields,
+                fields=key_fields.values(),
             )
         )
 
