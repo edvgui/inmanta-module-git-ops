@@ -19,6 +19,7 @@ Contact: edvgui@gmail.com
 import functools
 import importlib
 import typing
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 
 from inmanta.plugins import Plugin, plugin
@@ -54,6 +55,7 @@ def unroll_slices(
 def attributes(
     slice_object_type: str,
     slice_object_attr: dict,
+    skip_attributes: Sequence[str] = [],
     **overrides: object,
 ) -> dict[str, object]:
     """
@@ -68,6 +70,9 @@ def attributes(
     :param slice_object_type: The type name of the object that will receive
         all the attributes values.
     :param slice_object_attr: The attributes dict, as returned by unroll_slices.
+    :param skip_attributes: Names of attributes which should not be part of the
+        dict.  Can be handy for processed attributes which need to have access
+        to the entity object itself.
     :param **overrides: Values that should be returned instead of the attribute
         value currently in the dict.
     """
@@ -94,6 +99,7 @@ def attributes(
     return {
         attr.name: overrides.get(attr.name, slice_object_attr[attr.name])
         for attr in slice_object_cls.entity_schema().all_attributes()
+        if attr.name not in skip_attributes
     }
 
 
