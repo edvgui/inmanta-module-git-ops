@@ -122,3 +122,18 @@ def unique_integer(
             return v
 
     raise LookupError(f"No free value in {free_values}")
+
+
+@attribute_processor
+def simple_value(
+    store_name: str,
+    name: str,
+    path: str,
+    previous_value: object | None = None,
+    *,
+    value: object,
+) -> object:
+    """
+    Save the current value inside the slice attributes.
+    """
+    return value
