@@ -21,9 +21,6 @@ import std
 entity EmbeddedSlice extends NamedSlice:
     """
     Base class for all slices embedded into a parent slice.
-
-    :attr unique_id: 
-    :rel recursive_slice: 
     """
     int? unique_id = null
 end
@@ -47,27 +44,19 @@ entity EmbeddedSliceRecursiveSlice extends EmbeddedSlice:
     """
 end
 
-index EmbeddedSliceRecursiveSlice(name, parent)
+index EmbeddedSliceRecursiveSlice(parent, name)
 
 entity NamedSlice extends git_ops::slice::EmbeddedSliceObjectABC:
     """
     Base class for all slices identified with a name.
-
-    :attr description: 
-    :attr name: 
     """
-    string? description = null
     string name
+    string? description = null
 end
 
 entity Slice extends NamedSlice, git_ops::slice::SliceObjectABC:
     """
     Main slice.
-
-    :attr unique_id: 
-    :rel embedded_optional: 
-    :rel embedded_required: 
-    :rel embedded_sequence: 
     """
     int? unique_id = null
 end
@@ -103,7 +92,7 @@ entity SliceEmbeddedOptional extends EmbeddedSlice:
     """
 end
 
-index SliceEmbeddedOptional(name, parent)
+index SliceEmbeddedOptional(parent, name)
 
 entity SliceEmbeddedRequired extends EmbeddedSlice:
     """
@@ -119,7 +108,7 @@ entity SliceEmbeddedRequired extends EmbeddedSlice:
     """
 end
 
-index SliceEmbeddedRequired(name, parent)
+index SliceEmbeddedRequired(parent, name)
 
 entity SliceEmbeddedSequence extends EmbeddedSlice:
     """
@@ -135,7 +124,7 @@ entity SliceEmbeddedSequence extends EmbeddedSlice:
     """
 end
 
-index SliceEmbeddedSequence(name, parent)
+index SliceEmbeddedSequence(parent, name)
 
 implement EmbeddedSlice using std::none, parents
 
@@ -151,5 +140,5 @@ implement SliceEmbeddedRequired using parents
 
 implement SliceEmbeddedSequence using parents
 
-# This file has been generated using inmanta-module-factory==3.0.0
+# This file has been generated using inmanta-module-factory==3.1.0
 # <IMF-GENERATED-FILE/>
