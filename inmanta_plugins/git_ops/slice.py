@@ -465,6 +465,14 @@ class SliceObjectABC(EmbeddedSliceObjectABC):
         description="The version of this slice.  Every time the slice source is modified, it is incremented.",
         exclude=True,
     )
+    slice_store: SkipJsonSchema[str] = pydantic.Field(
+        description="The name of the store in which the instance of the slice is defined.",
+        exclude=True,
+    )
+    slice_name: SkipJsonSchema[str] = pydantic.Field(
+        description="The identifying name of the slice within its store.",
+        exclude=True,
+    )
 
     @classmethod
     def entity_schema(cls) -> SliceEntitySchema:

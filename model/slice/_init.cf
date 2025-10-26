@@ -41,8 +41,12 @@ entity SliceObjectABC extends EmbeddedSliceObjectABC:
 
     :attr version: The version of this slice.  Every time the slice source is modified, it
         is incremented.
+    :attr slice_store: The name of the store in which the instance of the slice is defined.
+    :attr slice_name: The identifying name of the slice within its store.
     """
     int version
+    string slice_store
+    string slice_name
 end
 
 implement EmbeddedSliceObjectABC using std::none, parents
