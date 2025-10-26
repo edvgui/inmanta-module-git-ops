@@ -106,12 +106,13 @@ def unique_integer(
     used_integers: typing.Annotated[typing.Callable[[], Collection[int]], object],
     range_start: int = 0,
     range_stop: int = 1000,
+    refresh: bool = False,
 ) -> int:
     """
     Pick a unique integer and return it.  The integer will be known to be unique
     if it is not part of all the used integers.
     """
-    if previous_value is not None:
+    if previous_value is not None and not refresh:
         # Stable processor, don't change value on each execution
         return previous_value
 
@@ -132,8 +133,12 @@ def simple_value(
     previous_value: object | None = None,
     *,
     value: object,
+    refresh: bool = False,
 ) -> object:
     """
     Save the current value inside the slice attributes.
     """
-    return value
+    if previous_value is None or refresh:
+        return value
+    else:
+        return previous_value
