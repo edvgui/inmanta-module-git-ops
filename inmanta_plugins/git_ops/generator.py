@@ -142,6 +142,8 @@ def get_relation(
                 "have a relation to this base entity, making it impossible\n"
                 "to define a unique parent relation."
             ),
+            force_attribute_doc=False,
+            sort_attributes=False,
         )
 
         builder.add_module_element(embedded_entity)
@@ -229,6 +231,8 @@ def get_entity(
             for parent in schema.base_entities
         ],
         description=schema.description,
+        force_attribute_doc=False,
+        sort_attributes=False,
     )
     ENTITIES[entity_path] = entity
     builder.add_module_element(entity)
