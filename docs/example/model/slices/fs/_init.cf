@@ -28,14 +28,14 @@ entity File extends PathABC:
     string content
 end
 
-index File(name, parent)
+index File(parent, name)
 
 entity Folder extends PathABC:
     """
     A folder in the filesystem tree, containing files and other folders.
 
-    :rel directories: A list of folder to manage within this folder.
     :rel files: A list of files to manage in the folder.
+    :rel directories: A list of folder to manage within this folder.
     """
 end
 
@@ -65,7 +65,7 @@ entity FolderDirectories extends Folder:
     """
 end
 
-index FolderDirectories(name, parent)
+index FolderDirectories(parent, name)
 
 entity PathABC extends git_ops::slice::EmbeddedSliceObjectABC:
     """
@@ -73,22 +73,24 @@ entity PathABC extends git_ops::slice::EmbeddedSliceObjectABC:
     This class contains all of the shared attributes that both files and
     directories have.
 
-    :attr group: The name or gid of the element group.
-    :attr name: The name of the filesystem element.  This name must be unique within the folder this element is part of.
-    :attr owner: The name or uid of the element owner.
+    :attr name: The name of the filesystem element.  This name must be unique within
+        the folder this element is part of.
     :attr permissions: The permissions to configure for this element.
+    :attr owner: The name or uid of the element owner.
+    :attr group: The name or gid of the element group.
     """
-    string? group = null
     string name
-    string? owner = null
     string permissions
+    string? owner = null
+    string? group = null
 end
 
 entity RootFolder extends git_ops::slice::SliceObjectABC, Folder:
     """
     The root folder, and the root of the slice.
 
-    :attr root: The base path in the file system inside which this folder should be created.
+    :attr root: The base path in the file system inside which this folder should be
+        created.
     """
     string root
 end
@@ -105,5 +107,5 @@ implement PathABC using std::none, parents
 
 implement RootFolder using std::none, parents
 
-# This file has been generated using inmanta-module-factory==3.0.0
+# This file has been generated using inmanta-module-factory==3.1.0
 # <IMF-GENERATED-FILE/>

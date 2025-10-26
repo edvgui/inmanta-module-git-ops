@@ -23,6 +23,7 @@ from inmanta_module_factory.helpers import utils
 from inmanta_module_factory.inmanta import (
     Attribute,
     Entity,
+    EntityField,
     EntityRelation,
     Implement,
     Implementation,
@@ -52,6 +53,39 @@ from inmanta_plugins.git_ops import slice
 
 # Cache entities to support recursive schema generation
 ENTITIES: dict[Sequence[str], Entity] = {}
+
+
+def long_description(
+    description: str | None, *, max_len: int = 90, indent: str = ""
+) -> str | None:
+    """
+    Split the description into multiple lines (if it doesn't contain any
+    newline characters already) to keep lines of maximum n characters.
+
+    :param description: The original description
+    :param max_len: The maximum length the description can have
+    :param indent: The indentation to add to each newline (after from the initial one)
+    """
+    if description is None:
+        return None
+
+    if "\n" in description:
+        return description
+
+    if len(description) < max_len:
+        return description
+
+    words = description.split(" ")
+    formatted_description: list[str] = [""]
+    for word in words:
+        if len(formatted_description[-1]) + len(word) > max_len:
+            formatted_description.append(indent + word)
+        elif formatted_description[-1]:
+            formatted_description[-1] += " " + word
+        else:
+            formatted_description[-1] += word
+
+    return "\n".join(formatted_description)
 
 
 def get_attribute_type(inmanta_type: Type) -> InmantaType:
@@ -96,7 +130,7 @@ def get_attribute(
         name=schema.name,
         inmanta_type=get_attribute_type(schema.inmanta_type),
         optional=isinstance(schema.inmanta_type, NullableType),
-        description=schema.description,
+        description=long_description(schema.description, max_len=70, indent=" " * 4),
         entity=entity,
     )
 
@@ -141,23 +175,26 @@ def get_relation(
                 "have a relation to this base entity, making it impossible\n"
                 "to define a unique parent relation."
             ),
+            force_attribute_doc=False,
+            sort_attributes=False,
         )
 
         builder.add_module_element(embedded_entity)
 
-        key_fields = [
-            field
-            for field in embedded_entity.all_fields()
-            if field.name in schema.entity.keys
-        ]
+        key_fields: dict[str, EntityField] = {}
+
         if parent_relation is not None:
-            key_fields.append(parent_relation)
+            key_fields[parent_relation.name] = parent_relation
+
+        for field in embedded_entity.all_fields():
+            if field.name in schema.entity.keys:
+                key_fields[field.name] = field
 
         builder.add_module_element(
             Index(
                 path=embedded_entity.path,
                 entity=embedded_entity,
-                fields=key_fields,
+                fields=key_fields.values(),
             )
         )
 
@@ -184,7 +221,7 @@ def get_relation(
         name=schema.name,
         path=parent.path,
         cardinality=(schema.cardinality_min, schema.cardinality_max),
-        description=schema.description,
+        description=long_description(schema.description),
         peer=parent_relation,
         entity=parent,
     )
@@ -226,7 +263,9 @@ def get_entity(
             )
             for parent in schema.base_entities
         ],
-        description=schema.description,
+        description=long_description(schema.description),
+        force_attribute_doc=False,
+        sort_attributes=False,
     )
     ENTITIES[entity_path] = entity
     builder.add_module_element(entity)
@@ -246,17 +285,20 @@ def get_entity(
 
     # Generate an index
     if slice_root or parent_relation is not None:
-        key_fields = [
-            field for field in entity.all_fields() if field.name in schema.keys
-        ]
+        key_fields: dict[str, EntityField] = {}
+
         if parent_relation is not None:
-            key_fields.append(parent_relation)
+            key_fields[parent_relation.name] = parent_relation
+
+        for field in entity.all_fields():
+            if field.name in schema.keys:
+                key_fields[field.name] = field
 
         builder.add_module_element(
             Index(
                 path=entity.path,
                 entity=entity,
-                fields=key_fields,
+                fields=key_fields.values(),
             )
         )
 

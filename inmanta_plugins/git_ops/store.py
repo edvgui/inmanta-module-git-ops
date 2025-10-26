@@ -454,6 +454,8 @@ class SliceStore[S: slice.SliceObjectABC]:
 
             # Merge the current and previous slices together
             attributes["version"] = current.version
+            attributes["slice_store"] = self.name
+            attributes["slice_name"] = s
             self.slices[s] = Slice(
                 name=s,
                 store_name=self.name,
