@@ -22,26 +22,26 @@ entity Slice extends git_ops::slice::SliceObjectABC:
     """
     Main slice.
 
-    :attr description: A helpful description of the slice's function.
     :attr name: The name of the slice.
-    :attr some_dict: An example of dict field.
+    :attr description: A helpful description of the slice's function.
+    :attr unique_id: A unique identifier automatically assigned to this slice.
+    :attr some_number: An example of number field.
     :attr some_flag: An example of boolean field.
     :attr some_list: An example of list field.
-    :attr some_number: An example of number field.
-    :attr unique_id: A unique identifier automatically assigned to this slice.
+    :attr some_dict: An example of dict field.
     """
-    string? description = null
     string name
-    dict some_dict
+    string? description = null
+    int? unique_id = null
+    float some_number
     bool some_flag
     list some_list
-    float some_number
-    int? unique_id = null
+    dict some_dict
 end
 
 index Slice(name)
 
 implement Slice using std::none, parents
 
-# This file has been generated using inmanta-module-factory==3.0.0
+# This file has been generated using inmanta-module-factory==3.1.0
 # <IMF-GENERATED-FILE/>

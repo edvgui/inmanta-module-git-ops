@@ -23,8 +23,13 @@ entity EmbeddedSliceObjectABC:
 
     This class should be extended by any configuration object that is part of any slice.
 
-    :attr operation: The operation attached to this part of the slice.  This dictates what to do with the model emitted by this slice (create/update/delete).  This value is not a user input, it is inserted into the slice source when the slice store is populated.
-    :attr path: The path leading to this slice object, starting from the root of the slice definition.  This value should be a valid dict path expression.
+    :attr operation: The operation attached to this part of the slice.  This dictates what
+        to do with the model emitted by this slice (create/update/delete). 
+        This value is not a user input, it is inserted into the slice
+        source when the slice store is populated.
+    :attr path: The path leading to this slice object, starting from the root of the
+        slice definition.  This value should be a valid dict path
+        expression.
     """
     string operation
     string path
@@ -34,7 +39,8 @@ entity SliceObjectABC extends EmbeddedSliceObjectABC:
     """
     Base class for the root of any slice definition.
 
-    :attr version: The version of this slice.  Every time the slice source is modified, it is incremented.
+    :attr version: The version of this slice.  Every time the slice source is modified, it
+        is incremented.
     """
     int version
 end
@@ -43,5 +49,5 @@ implement EmbeddedSliceObjectABC using std::none, parents
 
 implement SliceObjectABC using std::none, parents
 
-# This file has been generated using inmanta-module-factory==3.0.0
+# This file has been generated using inmanta-module-factory==3.1.0
 # <IMF-GENERATED-FILE/>
