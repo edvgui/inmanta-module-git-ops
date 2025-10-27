@@ -76,7 +76,7 @@ class SliceFile[S: slice.SliceObjectABC]:
             return self.path.write_text(json.dumps(attributes, indent=2))
 
         if self.extension in ["yaml", "yml"]:
-            return self.path.write_text(yaml.safe_dump(attributes))
+            return self.path.write_text(yaml.safe_dump(attributes, sort_keys=False))
 
         raise ValueError(f"Unsupported slice file extension: {self.extension}")
 
