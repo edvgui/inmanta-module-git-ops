@@ -208,6 +208,8 @@ class SliceStore[S: slice.SliceObjectABC]:
 
         # This dict contains all the resolved slices to be used in the
         # current compile
+        self.current_slices: dict[str, Slice] | None = None
+        self.previous_slices: dict[str, Slice] | None = None
         self.slices: dict[str, Slice] | None = None
 
         self.register_store()
@@ -387,15 +389,13 @@ class SliceStore[S: slice.SliceObjectABC]:
 
         return self.source_slices
 
-    def load_slices(self) -> dict[str, Slice]:
+    def load_current_slices(self) -> dict[str, Slice]:
         """
-        Load all the slices defined in the project, for the current compile.
-        If the compile is an activate compile, we load all the source slices
-        and allocate them the right version, otherwise we only look at the
-        already active slices.
+        Load all the previous slices (for slices which have an older version
+        then the current latest one).
         """
-        if self.slices is not None:
-            return self.slices
+        if self.current_slices is not None:
+            return self.current_slices
 
         active_slices = self.load_active_slices()
 
@@ -405,13 +405,28 @@ class SliceStore[S: slice.SliceObjectABC]:
             # slices too
             slices |= self.load_source_slices().keys()
 
-        self.slices: dict[str, Slice] = {}
+        self.current_slices: dict[str, Slice] = {}
         for s in slices:
-            latest = self.get_latest_slice(s)
             if const.COMPILE_MODE in [const.COMPILE_UPDATE, const.COMPILE_SYNC]:
-                current = self.load_source_slices()[s]
+                self.current_slices[s] = self.load_source_slices()[s]
             else:
-                current = latest
+                self.current_slices[s] = self.get_latest_slice(s)
+
+        return self.current_slices
+
+    def load_previous_slices(self) -> dict[str, Slice]:
+        """
+        Load all the previous slices (for slices which have an older version
+        then the current latest one).
+        """
+        if self.previous_slices is not None:
+            return self.previous_slices
+
+        active_slices = self.load_active_slices()
+
+        self.previous_slices: dict[str, Slice] = {}
+        for s, current in self.load_current_slices().items():
+            latest = self.get_latest_slice(s)
 
             previous = [
                 s.attributes
@@ -438,16 +453,42 @@ class SliceStore[S: slice.SliceObjectABC]:
                     *previous[2:],
                 ]
 
+            if previous:
+                self.previous_slices[s] = Slice(
+                    name=s,
+                    store_name=self.name,
+                    version=current.version - 1,
+                    attributes=previous[0],
+                    deleted=False,
+                )
+
+        return self.previous_slices
+
+    def load_slices(self) -> dict[str, Slice]:
+        """
+        Load all the slices defined in the project, for the current compile.
+        If the compile is an activate compile, we load all the source slices
+        and allocate them the right version, otherwise we only look at the
+        already active slices.
+        """
+        if self.slices is not None:
+            return self.slices
+
+        previous_slices = self.load_previous_slices()
+
+        self.slices: dict[str, Slice] = {}
+        for s, current in self.load_current_slices().items():
             if current.deleted:
                 # We need to get the attributes of the last undeleted
                 # version, otherwise we don't know what we have to delete
-                attributes = previous[0]
+                attributes = previous_slices[s].attributes
             else:
                 # Normal merge
+                new = s not in previous_slices
                 attributes = merge_attributes(
                     current=current.attributes,
-                    previous=previous[0] if previous else None,
-                    operation="update" if previous else "create",
+                    previous=None if new else previous_slices[s].attributes,
+                    operation="create" if new else "update",
                     path=dict_path.NullPath(),
                     schema=self.schema.entity_schema(),
                 )
@@ -525,6 +566,8 @@ class SliceStore[S: slice.SliceObjectABC]:
         self.source_slices = None
         self.active_slice_files = None
         self.active_slices = None
+        self.current_slices = None
+        self.previous_slices = None
         self.slices = None
 
     def get_all_slices(self) -> list[Slice]:
@@ -594,6 +637,32 @@ class SliceStore[S: slice.SliceObjectABC]:
         """
         try:
             return path.get_element(self.get_one_slice(name).attributes)
+        except LookupError:
+            return default
+
+    def get_slice_previous_attribute[T: object](
+        self,
+        name: str,
+        path: dict_path.DictPath,
+        *,
+        default: T | None = None,
+    ) -> T | None:
+        """
+        Get the previous value of an attribute located at the given path in a slice.
+
+        :param name: The name of the slice.
+        :param path: The path within the slice towards the attribute that
+            should be fetched.
+        :param default: The default value to return if the attribute doesn't
+            exist in the slice.
+        """
+        slices = self.load_previous_slices()
+        if name not in slices:
+            # No previous version for the given slice
+            return default
+
+        try:
+            return path.get_element(slices[name].attributes)
         except LookupError:
             return default
 

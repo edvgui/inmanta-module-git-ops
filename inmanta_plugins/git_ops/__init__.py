@@ -104,6 +104,28 @@ def attributes(
 
 
 @plugin
+def get_slice_previous_attribute(
+    store_name: str,
+    name: str,
+    path: str,
+) -> object:
+    """
+    Get the previous value of an attribute located at the given path in a slice.
+    The path should be a valid dict path expression.
+
+    :param store_name: The name of the store in which the slice is defined.
+    :param name: The name of the slice within the store.
+    :param path: The path within the slice's attributes towards the value that
+        should be fetched.
+    """
+    from inmanta_plugins.git_ops import store
+
+    return store.get_store(store_name).get_slice_previous_attribute(
+        name, dict_path.to_path(path)
+    )
+
+
+@plugin
 def get_slice_attribute(
     store_name: str,
     name: str,
