@@ -103,10 +103,10 @@ def get_attribute_type(inmanta_type: Type) -> InmantaType:
             return InmantaBooleanType
         case Dict():
             return InmantaDictType
-        case List():
-            return InmantaAdvancedType("list")
         case TypedList():
             return InmantaListType(get_attribute_type(inmanta_type.element_type))
+        case List():
+            return InmantaAdvancedType("list")
         case NullableType():
             return get_attribute_type(inmanta_type.element_type)
         case _:
