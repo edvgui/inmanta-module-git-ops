@@ -23,9 +23,11 @@ entity File extends PathABC:
     A text file in a folder, with its textual content.
 
     :attr content: The textual content of the file.
+    :attr previous_content: The previous desired content of the file.
     :rel parent: Relation to parent
     """
     string content
+    string? previous_content = null
 end
 
 index File(parent, name)
