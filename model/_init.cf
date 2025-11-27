@@ -15,3 +15,13 @@
 
     Contact: edvgui@gmail.com
 """
+
+typedef operation_t as string matching self in ["create", "update", "delete"]
+"""
+Different allowed operations that slice embedded entities can have depending
+on the existing versions in the slice store.
+"""
+
+create = "create"
+update = "update"
+delete = "delete"
