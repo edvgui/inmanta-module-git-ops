@@ -16,6 +16,9 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 
+import functools
+import importlib
+import pathlib
 from collections.abc import Sequence
 
 from inmanta_module_factory.builder import InmantaModuleBuilder
@@ -37,6 +40,7 @@ from inmanta_module_factory.inmanta import (
     InmantaStringType,
     InmantaType,
 )
+from inmanta_module_factory.inmanta.modules.std import none, resource
 
 from inmanta.ast.type import (
     Bool,
@@ -49,10 +53,56 @@ from inmanta.ast.type import (
     Type,
     TypedList,
 )
+from inmanta.module import ModuleV2, ModuleV2Source, Module
 from inmanta_plugins.git_ops import slice
 
 # Cache entities to support recursive schema generation
 ENTITIES: dict[Sequence[str], Entity] = {}
+
+
+@functools.lru_cache
+def get_module(module: str) -> Module:
+    """
+    Get the module object for the module with the given name, installed
+    installed in the current virtual environment.
+
+    :param module: The name of the module.
+    """
+    # Resolve the module path by importing the module's plugin
+    # and locating the source file
+    python_module = importlib.import_module(f"inmanta_plugins.{module}")
+    if python_module.__file__ is None:
+        raise RuntimeError(f"Failed to resolve path of module {module}")
+
+    # Path to the plugins directory
+    plugins_path = pathlib.Path(python_module.__file__).parent
+
+    if (plugins_path / "setup.cfg").exists():
+        # Non-editable install
+        module = ModuleV2.from_path(str(plugins_path))
+    else:
+        # Editable install
+        module = ModuleV2Source.from_path(
+            None,
+            module,
+            str(plugins_path.parent.parent),
+        )
+    
+    if module is None:
+        raise RuntimeError(f"No module at path {plugins_path}")
+    
+    return module
+
+
+@functools.lru_cache
+def get_module_builder(module: str) -> InmantaModuleBuilder:
+    """
+    Construct and cache the module builder for the given module.  The
+    module must be installed in the current venv.
+
+    :param module: The name of the module.
+    """
+    return InmantaModuleBuilder.from_existing_module(get_module(module))
 
 
 def long_description(
@@ -117,7 +167,6 @@ def get_attribute(
     schema: slice.SliceEntityAttributeSchema,
     *,
     entity: Entity,
-    builder: InmantaModuleBuilder,
 ) -> Attribute:
     """
     Generate the attribute matching the input schema.
@@ -139,7 +188,6 @@ def get_relation(
     schema: slice.SliceEntityRelationSchema,
     *,
     parent: Entity,
-    builder: InmantaModuleBuilder,
 ) -> EntityRelation:
     """
     Generate the entity relation equivalent to the input schema.  The reverse
@@ -151,6 +199,8 @@ def get_relation(
     :param builder: The module builder in which the target entity should be
         added.
     """
+    builder = get_module_builder(schema.entity.path[0])
+
     parent_relation = EntityRelation(
         name="parent",
         path=schema.entity.path,
@@ -161,7 +211,6 @@ def get_relation(
     if schema.entity.has_many_parents():
         base = get_entity(
             schema=schema.entity,
-            builder=builder,
             parent_relation=None,
         )
         embedded_entity = Entity(
@@ -232,7 +281,6 @@ def get_entity(
     *,
     slice_root: bool = False,
     parent_relation: EntityRelation | None = None,
-    builder: InmantaModuleBuilder,
 ) -> Entity:
     """
     Translate the input entity schema into an equivalent entity definition
@@ -252,6 +300,8 @@ def get_entity(
     if entity_path in ENTITIES:
         return ENTITIES[entity_path]
 
+    builder = get_module_builder(entity_path[0])
+
     # Emit the entity
     entity = Entity(
         name=schema.name,
@@ -259,7 +309,6 @@ def get_entity(
         parents=[
             get_entity(
                 schema=parent,
-                builder=builder,
             )
             for parent in schema.base_entities
         ],
@@ -272,13 +321,12 @@ def get_entity(
 
     # Go over all the attributes and relations
     for attribute in schema.attributes:
-        get_attribute(attribute, entity=entity, builder=builder)
+        get_attribute(attribute, entity=entity)
 
     for relation in schema.embedded_entities:
         builder.add_module_element(
             get_relation(
                 schema=relation,
-                builder=builder,
                 parent=entity,
             )
         )
@@ -302,6 +350,10 @@ def get_entity(
             )
         )
 
+    implementations = [none]
+    if parent_relation is not None:
+        implementations.append(PARENT_RELATIONS_IMPLEMENTATION)
+
     # Add a basic implement statement
     builder.add_module_element(
         Implement(
@@ -309,15 +361,44 @@ def get_entity(
             implementation=None,
             entity=entity,
             using_parents=True,
-            implementations=[
-                Implementation(
-                    name="none",
-                    path=["std"],
-                    entity=entity,
-                    content="",
-                )
-            ],
+            implementations=implementations,
         )
     )
 
     return entity
+
+
+# Pre-populate the entities of the git_ops module
+SLICE_OBJECT_ABC = get_entity(slice.SliceObjectABC.entity_schema())
+EMBEDDED_SLICE_OBJECT_ABC = get_entity(slice.SliceObjectABC.entity_schema())
+
+# Add a resources relation to the embedded slice object
+get_module_builder("git_ops").add_module_element(
+    EntityRelation(
+        entity=EMBEDDED_SLICE_OBJECT_ABC,
+        name="resources",
+        path=["git_ops", "slice"],
+        cardinality=(0, None),
+        description="""
+A list of all the resources that have been emitted by refining this embedded
+slice entity.  This has no current use.
+""",
+        peer=EntityRelation(
+            name="",
+            path=["git_ops", "slice"],
+            cardinality=(1, 1),
+            entity=resource,
+        ),
+    )
+)
+
+# Add an implementation that wires the resources of an embedded entity
+# into the resources of its parent
+PARENT_RELATIONS_IMPLEMENTATION = Implementation(
+    name="parent_relations",
+    path=["git_ops", "slice"],
+    entity=EMBEDDED_SLICE_OBJECT_ABC,
+    content="self.parent.resources += self.resources",
+    description="Attach the resources to the parent resources.",
+)
+get_module_builder("git_ops").add_module_element(PARENT_RELATIONS_IMPLEMENTATION)
