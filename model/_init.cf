@@ -26,16 +26,3 @@ on the existing versions in the slice store.
 create = "create"
 update = "update"
 delete = "delete"
-
-git_ops::slice::EmbeddedSliceObjectABC.resources [0:] -- std::Resource
-"""
-A list of all the resources that have been emitted by refining this embedded
-slice entity.  This has no current use.
-"""
-
-implementation parent_relations for git_ops::slice::EmbeddedSliceObjectABC:
-    """
-    Attach the resources to the parent resources.
-    """
-    self.parent.resources += self.resources
-end

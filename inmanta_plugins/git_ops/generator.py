@@ -40,7 +40,7 @@ from inmanta_module_factory.inmanta import (
     InmantaStringType,
     InmantaType,
 )
-from inmanta_module_factory.inmanta.modules.std import none, resource
+from inmanta_module_factory.inmanta.modules import std
 
 from inmanta.ast.type import (
     Bool,
@@ -53,7 +53,7 @@ from inmanta.ast.type import (
     Type,
     TypedList,
 )
-from inmanta.module import ModuleV2, ModuleV2Source, Module
+from inmanta.module import Module, ModuleV2, ModuleV2Source
 from inmanta_plugins.git_ops import slice
 
 # Cache entities to support recursive schema generation
@@ -87,10 +87,10 @@ def get_module(module: str) -> Module:
             module,
             str(plugins_path.parent.parent),
         )
-    
+
     if module is None:
         raise RuntimeError(f"No module at path {plugins_path}")
-    
+
     return module
 
 
@@ -259,7 +259,6 @@ def get_relation(
     else:
         embedded_entity = get_entity(
             schema=schema.entity,
-            builder=builder,
             parent_relation=parent_relation,
         )
 
@@ -311,7 +310,8 @@ def get_entity(
                 schema=parent,
             )
             for parent in schema.base_entities
-        ],
+        ]
+        + [std.entity],
         description=long_description(schema.description),
         force_attribute_doc=False,
         sort_attributes=False,
@@ -350,10 +350,6 @@ def get_entity(
             )
         )
 
-    implementations = [none]
-    if parent_relation is not None:
-        implementations.append(PARENT_RELATIONS_IMPLEMENTATION)
-
     # Add a basic implement statement
     builder.add_module_element(
         Implement(
@@ -361,7 +357,7 @@ def get_entity(
             implementation=None,
             entity=entity,
             using_parents=True,
-            implementations=implementations,
+            implementations=[std.none],
         )
     )
 
@@ -370,7 +366,7 @@ def get_entity(
 
 # Pre-populate the entities of the git_ops module
 SLICE_OBJECT_ABC = get_entity(slice.SliceObjectABC.entity_schema())
-EMBEDDED_SLICE_OBJECT_ABC = get_entity(slice.SliceObjectABC.entity_schema())
+EMBEDDED_SLICE_OBJECT_ABC = get_entity(slice.EmbeddedSliceObjectABC.entity_schema())
 
 # Add a resources relation to the embedded slice object
 get_module_builder("git_ops").add_module_element(
@@ -379,15 +375,31 @@ get_module_builder("git_ops").add_module_element(
         name="resources",
         path=["git_ops", "slice"],
         cardinality=(0, None),
-        description="""
-A list of all the resources that have been emitted by refining this embedded
+        description="""A list of all the resources that have been emitted by refining this embedded
 slice entity.  This has no current use.
 """,
         peer=EntityRelation(
             name="",
             path=["git_ops", "slice"],
             cardinality=(1, 1),
-            entity=resource,
+            entity=std.resource,
+        ),
+    )
+)
+get_module_builder("git_ops").add_module_element(
+    EntityRelation(
+        entity=EMBEDDED_SLICE_OBJECT_ABC,
+        name="owned_resources",
+        path=["git_ops", "slice"],
+        cardinality=(0, None),
+        description="""A list of all the resources that have been emitted by refining this embedded
+slice entity.  This has no current use.
+""",
+        peer=EntityRelation(
+            name="",
+            path=["git_ops", "slice"],
+            cardinality=(1, 1),
+            entity=std.resource,
         ),
     )
 )
@@ -398,7 +410,10 @@ PARENT_RELATIONS_IMPLEMENTATION = Implementation(
     name="parent_relations",
     path=["git_ops", "slice"],
     entity=EMBEDDED_SLICE_OBJECT_ABC,
-    content="self.parent.resources += self.resources",
+    content=(
+        "self.parent.resources += self.resources\n"
+        "self.parent.owned_resources += self.owned_resources"
+    ),
     description="Attach the resources to the parent resources.",
 )
 get_module_builder("git_ops").add_module_element(PARENT_RELATIONS_IMPLEMENTATION)
