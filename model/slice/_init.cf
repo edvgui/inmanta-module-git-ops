@@ -30,10 +30,29 @@ entity EmbeddedSliceObjectABC:
     :attr path: The path leading to this slice object, starting from the root of the
         slice definition.  This value should be a valid dict path
         expression.
+    :rel resources: A list of all the resources that have been emitted by refining this embedded
+    slice entity.  This has no current use.
+
+    :rel owned_resources: A list of all the resources that have been emitted by refining this embedded
+    slice entity.  This has no current use.
     """
     string operation
     string path
 end
+
+EmbeddedSliceObjectABC.owned_resources [0:] -- std::Resource
+"""
+A list of all the resources that have been emitted by refining this embedded
+slice entity.  This has no current use.
+
+Peer relation: """
+
+EmbeddedSliceObjectABC.resources [0:] -- std::Resource
+"""
+A list of all the resources that have been emitted by refining this embedded
+slice entity.  This has no current use.
+
+Peer relation: """
 
 entity SliceObjectABC extends EmbeddedSliceObjectABC:
     """
@@ -52,6 +71,14 @@ end
 implement EmbeddedSliceObjectABC using std::none, parents
 
 implement SliceObjectABC using std::none, parents
+
+implementation parent_relations for EmbeddedSliceObjectABC:
+    """
+    Attach the resources to the parent resources.
+    """
+    self.parent.resources += self.resources
+    self.parent.owned_resources += self.owned_resources
+end
 
 # This file has been generated using inmanta-module-factory==3.1.0
 # <IMF-GENERATED-FILE/>

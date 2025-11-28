@@ -35,7 +35,7 @@ entity Slice extends git_ops::slice::SliceObjectABC:
     int? unique_id = null
     float some_number
     bool some_flag
-    list some_list
+    string[] some_list
     dict some_dict
 end
 
