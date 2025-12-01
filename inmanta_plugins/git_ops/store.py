@@ -21,14 +21,17 @@ import json
 import pathlib
 import re
 import typing
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 import pydantic
 import yaml
+import yaml.error
 from inmanta_plugins.config import resolve_path
 from inmanta_plugins.config.const import InmantaPath, SystemPath
 
 from inmanta.compiler import finalizer
+from inmanta.execute.proxy import SequenceProxy
 from inmanta.util import dict_path
 from inmanta_plugins.git_ops import Slice, const, slice
 
@@ -73,10 +76,20 @@ class SliceFile[S: slice.SliceObjectABC]:
         :param attributes: The raw slice attributes to write to the file.
         """
         if self.extension == "json":
-            return self.path.write_text(json.dumps(attributes, indent=2))
+            try:
+                return self.path.write_text(json.dumps(attributes, indent=2))
+            except TypeError as e:
+                raise ValueError(
+                    f"Attributes can not be serialized: {attributes}"
+                ) from e
 
         if self.extension in ["yaml", "yml"]:
-            return self.path.write_text(yaml.safe_dump(attributes, sort_keys=False))
+            try:
+                return self.path.write_text(yaml.safe_dump(attributes, sort_keys=False))
+            except yaml.error.YAMLError as e:
+                raise ValueError(
+                    f"Attributes can not be serialized: {attributes}"
+                ) from e
 
         raise ValueError(f"Unsupported slice file extension: {self.extension}")
 
@@ -594,6 +607,24 @@ class SliceStore[S: slice.SliceObjectABC]:
 
         return slices[name]
 
+    def json_value(self, raw_value: object) -> object:
+        """
+        Convert an immutable value (i.e. coming from the inmanta DSL) into
+        a mutable, json-like python object.  Sequences are converted into
+        lists, and Mappings into dicts.  Any other value is kept as is.
+
+        :param raw_value: The raw value that should be converted.
+        """
+        match raw_value:
+            case str():
+                return raw_value
+            case Sequence() | SequenceProxy():
+                return [self.json_value(item) for item in raw_value]
+            case Mapping():
+                return {k: self.json_value(v) for k, v in raw_value.items()}
+            case _:
+                return raw_value
+
     def set_slice_attribute[T: object](
         self,
         name: str,
@@ -614,9 +645,11 @@ class SliceStore[S: slice.SliceObjectABC]:
                 f"Slice attributes can only be updated during {const.COMPILE_UPDATE} compiles"
             )
 
-        path.set_element(self.load_source_slices()[name].attributes, value)
-        path.set_element(self.get_one_slice(name).attributes, value)
-        return value
+        editable_value = self.json_value(value)
+
+        path.set_element(self.load_source_slices()[name].attributes, editable_value)
+        path.set_element(self.get_one_slice(name).attributes, editable_value)
+        return editable_value
 
     def get_slice_attribute[T: object](
         self,
