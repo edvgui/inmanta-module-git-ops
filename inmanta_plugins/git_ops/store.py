@@ -58,14 +58,26 @@ class SliceFile[S: slice.SliceObjectABC]:
         based on the file extension.  Return the json-like object
         as a python dict.
         """
-        type_adapter = pydantic.TypeAdapter(dict)
+        type_adapter = pydantic.TypeAdapter(self.schema)
         if self.extension == "json":
-            return type_adapter.validate_python(json.loads(self.path.read_text()))
+            attributes = type_adapter.validate_python(json.loads(self.path.read_text()))
+        elif self.extension in ["yaml", "yml"]:
+            attributes = type_adapter.validate_python(
+                yaml.safe_load(self.path.read_text())
+            )
+        else:
+            raise ValueError(f"Unsupported slice file extension: {self.extension}")
 
-        if self.extension in ["yaml", "yml"]:
-            return type_adapter.validate_python(yaml.safe_load(self.path.read_text()))
-
-        raise ValueError(f"Unsupported slice file extension: {self.extension}")
+        if attributes == {}:
+            # The slice has been deleted
+            return {}
+        else:
+            # Load default values (and model only values)
+            return (
+                pydantic.TypeAdapter(self.schema)
+                .validate_python(attributes)
+                .model_dump(mode="json")
+            )
 
     def write(self, attributes: dict) -> None:
         """
@@ -75,6 +87,17 @@ class SliceFile[S: slice.SliceObjectABC]:
 
         :param attributes: The raw slice attributes to write to the file.
         """
+        with slice.exclude_model_values():
+            attributes = (
+                (
+                    pydantic.TypeAdapter(self.schema)
+                    .validate_python(attributes)
+                    .model_dump(mode="json")
+                )
+                if attributes != {}
+                else {}
+            )
+
         if self.extension == "json":
             try:
                 return self.path.write_text(json.dumps(attributes, indent=2))
@@ -133,23 +156,12 @@ class SliceFile[S: slice.SliceObjectABC]:
         # Read the slice content
         attributes = self.read()
 
-        # Empty dict means the slice has been deleted
-        deleted = attributes == {}
-
-        if not deleted:
-            # Validate the attributes from the file, and insert any default values in the attributes
-            attributes = (
-                pydantic.TypeAdapter(self.schema)
-                .validate_python(attributes)
-                .model_dump(mode="json")
-            )
-
         return Slice(
             name=self.name,
             store_name=store_name,
             version=version,
             attributes=attributes,
-            deleted=deleted,
+            deleted=attributes == {},
         )
 
     @classmethod

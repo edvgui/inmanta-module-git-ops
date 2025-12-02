@@ -108,6 +108,8 @@ def get_slice_previous_attribute(
     store_name: str,
     name: str,
     path: str,
+    *,
+    default: object | None = None,
 ) -> object:
     """
     Get the previous value of an attribute located at the given path in a slice.
@@ -117,11 +119,15 @@ def get_slice_previous_attribute(
     :param name: The name of the slice within the store.
     :param path: The path within the slice's attributes towards the value that
         should be fetched.
+    :param default: Default value to return in case the attribute doesn't exist
+        in the previous version of the slice.
     """
     from inmanta_plugins.git_ops import store
 
     return store.get_store(store_name).get_slice_previous_attribute(
-        name, dict_path.to_path(path)
+        name,
+        dict_path.to_path(path),
+        default=default,
     )
 
 
