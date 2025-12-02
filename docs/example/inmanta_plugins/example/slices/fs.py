@@ -63,7 +63,7 @@ class File(PathABC):
     previous_content: SkipJsonSchema[str | None] = pydantic.Field(
         default=None,
         description="The previous desired content of the file.",
-        exclude=True,
+        exclude_if=slice.slice_update,
     )
 
 
