@@ -106,12 +106,13 @@ def unique_integer(
     used_integers: typing.Annotated[typing.Callable[[], Collection[int]], object],
     range_start: int = 0,
     range_stop: int = 1000,
+    refresh: bool = False,
 ) -> int:
     """
     Pick a unique integer and return it.  The integer will be known to be unique
     if it is not part of all the used integers.
     """
-    if previous_value is not None:
+    if previous_value is not None and not refresh:
         # Stable processor, don't change value on each execution
         return previous_value
 
@@ -122,3 +123,22 @@ def unique_integer(
             return v
 
     raise LookupError(f"No free value in {free_values}")
+
+
+@attribute_processor
+def simple_value(
+    store_name: str,
+    name: str,
+    path: str,
+    previous_value: object | None = None,
+    *,
+    value: object,
+    refresh: bool = False,
+) -> object:
+    """
+    Save the current value inside the slice attributes.
+    """
+    if previous_value is None or refresh:
+        return value
+    else:
+        return previous_value

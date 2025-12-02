@@ -25,6 +25,7 @@ entity FolderFactory:
     dict attributes
 end
 FolderFactory.parent [1] -- Folder
+FolderFactory.root_folder [1] -- Folder
 
 
 implementation construct_folder for FolderFactory:
@@ -32,13 +33,23 @@ implementation construct_folder for FolderFactory:
         parent=self.parent,
         **git_ops::attributes("example::slices::fs::Folder", self.attributes),
         files=[
-            File(**git_ops::attributes("example::slices::fs::File", file))
+            File(
+                **git_ops::attributes(
+                    "example::slices::fs::File",
+                    file,
+                    previous_content=git_ops::get_slice_previous_attribute(
+                        self.root_folder.slice_store,
+                        self.root_folder.slice_name,
+                        file["path"] + ".content",
+                    ),
+                )
+            )
             for file in self.attributes["files"]
         ],
     )
 
     for child_folder in self.attributes["directories"]:
-        FolderFactory(attributes=child_folder, parent=folder)
+        FolderFactory(attributes=child_folder, parent=folder, root_folder=self.root_folder)
     end
 end
 
@@ -50,12 +61,22 @@ for slice in git_ops::unroll_slices("fs"):
     root = RootFolder(
         **git_ops::attributes("example::slices::fs::RootFolder", slice["attributes"]),
         files=[
-            File(**git_ops::attributes("example::slices::fs::File", file))
+            File(
+                **git_ops::attributes(
+                    "example::slices::fs::File",
+                    file,
+                    previous_content=git_ops::get_slice_previous_attribute(
+                        root.slice_store,
+                        root.slice_name,
+                        file["path"] + ".content",
+                    ),
+                )
+            )
             for file in slice["attributes"]["files"]
         ],
     )
 
     for child_folder in slice["attributes"]["directories"]:
-        FolderFactory(attributes=child_folder, parent=root)
+        FolderFactory(attributes=child_folder, parent=root, root_folder=root)
     end
 end

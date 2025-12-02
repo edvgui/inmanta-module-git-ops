@@ -21,14 +21,17 @@ import json
 import pathlib
 import re
 import typing
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 import pydantic
 import yaml
+import yaml.error
 from inmanta_plugins.config import resolve_path
 from inmanta_plugins.config.const import InmantaPath, SystemPath
 
 from inmanta.compiler import finalizer
+from inmanta.execute.proxy import SequenceProxy
 from inmanta.util import dict_path
 from inmanta_plugins.git_ops import Slice, const, slice
 
@@ -55,14 +58,26 @@ class SliceFile[S: slice.SliceObjectABC]:
         based on the file extension.  Return the json-like object
         as a python dict.
         """
-        type_adapter = pydantic.TypeAdapter(dict)
+        type_adapter = pydantic.TypeAdapter(self.schema)
         if self.extension == "json":
-            return type_adapter.validate_python(json.loads(self.path.read_text()))
+            attributes = type_adapter.validate_python(json.loads(self.path.read_text()))
+        elif self.extension in ["yaml", "yml"]:
+            attributes = type_adapter.validate_python(
+                yaml.safe_load(self.path.read_text())
+            )
+        else:
+            raise ValueError(f"Unsupported slice file extension: {self.extension}")
 
-        if self.extension in ["yaml", "yml"]:
-            return type_adapter.validate_python(yaml.safe_load(self.path.read_text()))
-
-        raise ValueError(f"Unsupported slice file extension: {self.extension}")
+        if attributes == {}:
+            # The slice has been deleted
+            return {}
+        else:
+            # Load default values (and model only values)
+            return (
+                pydantic.TypeAdapter(self.schema)
+                .validate_python(attributes)
+                .model_dump(mode="json")
+            )
 
     def write(self, attributes: dict) -> None:
         """
@@ -72,11 +87,32 @@ class SliceFile[S: slice.SliceObjectABC]:
 
         :param attributes: The raw slice attributes to write to the file.
         """
+        with slice.exclude_model_values():
+            attributes = (
+                (
+                    pydantic.TypeAdapter(self.schema)
+                    .validate_python(attributes)
+                    .model_dump(mode="json")
+                )
+                if attributes != {}
+                else {}
+            )
+
         if self.extension == "json":
-            return self.path.write_text(json.dumps(attributes, indent=2))
+            try:
+                return self.path.write_text(json.dumps(attributes, indent=2))
+            except TypeError as e:
+                raise ValueError(
+                    f"Attributes can not be serialized: {attributes}"
+                ) from e
 
         if self.extension in ["yaml", "yml"]:
-            return self.path.write_text(yaml.safe_dump(attributes))
+            try:
+                return self.path.write_text(yaml.safe_dump(attributes, sort_keys=False))
+            except yaml.error.YAMLError as e:
+                raise ValueError(
+                    f"Attributes can not be serialized: {attributes}"
+                ) from e
 
         raise ValueError(f"Unsupported slice file extension: {self.extension}")
 
@@ -120,23 +156,12 @@ class SliceFile[S: slice.SliceObjectABC]:
         # Read the slice content
         attributes = self.read()
 
-        # Empty dict means the slice has been deleted
-        deleted = attributes == {}
-
-        if not deleted:
-            # Validate the attributes from the file, and insert any default values in the attributes
-            attributes = (
-                pydantic.TypeAdapter(self.schema)
-                .validate_python(attributes)
-                .model_dump(mode="json")
-            )
-
         return Slice(
             name=self.name,
             store_name=store_name,
             version=version,
             attributes=attributes,
-            deleted=deleted,
+            deleted=attributes == {},
         )
 
     @classmethod
@@ -208,6 +233,8 @@ class SliceStore[S: slice.SliceObjectABC]:
 
         # This dict contains all the resolved slices to be used in the
         # current compile
+        self.current_slices: dict[str, Slice] | None = None
+        self.previous_slices: dict[str, Slice] | None = None
         self.slices: dict[str, Slice] | None = None
 
         self.register_store()
@@ -387,15 +414,13 @@ class SliceStore[S: slice.SliceObjectABC]:
 
         return self.source_slices
 
-    def load_slices(self) -> dict[str, Slice]:
+    def load_current_slices(self) -> dict[str, Slice]:
         """
-        Load all the slices defined in the project, for the current compile.
-        If the compile is an activate compile, we load all the source slices
-        and allocate them the right version, otherwise we only look at the
-        already active slices.
+        Load all the previous slices (for slices which have an older version
+        then the current latest one).
         """
-        if self.slices is not None:
-            return self.slices
+        if self.current_slices is not None:
+            return self.current_slices
 
         active_slices = self.load_active_slices()
 
@@ -405,13 +430,28 @@ class SliceStore[S: slice.SliceObjectABC]:
             # slices too
             slices |= self.load_source_slices().keys()
 
-        self.slices: dict[str, Slice] = {}
+        self.current_slices: dict[str, Slice] = {}
         for s in slices:
-            latest = self.get_latest_slice(s)
             if const.COMPILE_MODE in [const.COMPILE_UPDATE, const.COMPILE_SYNC]:
-                current = self.load_source_slices()[s]
+                self.current_slices[s] = self.load_source_slices()[s]
             else:
-                current = latest
+                self.current_slices[s] = self.get_latest_slice(s)
+
+        return self.current_slices
+
+    def load_previous_slices(self) -> dict[str, Slice]:
+        """
+        Load all the previous slices (for slices which have an older version
+        then the current latest one).
+        """
+        if self.previous_slices is not None:
+            return self.previous_slices
+
+        active_slices = self.load_active_slices()
+
+        self.previous_slices: dict[str, Slice] = {}
+        for s, current in self.load_current_slices().items():
+            latest = self.get_latest_slice(s)
 
             previous = [
                 s.attributes
@@ -438,16 +478,42 @@ class SliceStore[S: slice.SliceObjectABC]:
                     *previous[2:],
                 ]
 
+            if previous:
+                self.previous_slices[s] = Slice(
+                    name=s,
+                    store_name=self.name,
+                    version=current.version - 1,
+                    attributes=previous[0],
+                    deleted=False,
+                )
+
+        return self.previous_slices
+
+    def load_slices(self) -> dict[str, Slice]:
+        """
+        Load all the slices defined in the project, for the current compile.
+        If the compile is an activate compile, we load all the source slices
+        and allocate them the right version, otherwise we only look at the
+        already active slices.
+        """
+        if self.slices is not None:
+            return self.slices
+
+        previous_slices = self.load_previous_slices()
+
+        self.slices: dict[str, Slice] = {}
+        for s, current in self.load_current_slices().items():
             if current.deleted:
                 # We need to get the attributes of the last undeleted
                 # version, otherwise we don't know what we have to delete
-                attributes = previous[0]
+                attributes = previous_slices[s].attributes
             else:
                 # Normal merge
+                new = s not in previous_slices
                 attributes = merge_attributes(
                     current=current.attributes,
-                    previous=previous[0] if previous else None,
-                    operation="update" if previous else "create",
+                    previous=None if new else previous_slices[s].attributes,
+                    operation="create" if new else "update",
                     path=dict_path.NullPath(),
                     schema=self.schema.entity_schema(),
                 )
@@ -525,6 +591,8 @@ class SliceStore[S: slice.SliceObjectABC]:
         self.source_slices = None
         self.active_slice_files = None
         self.active_slices = None
+        self.current_slices = None
+        self.previous_slices = None
         self.slices = None
 
     def get_all_slices(self) -> list[Slice]:
@@ -551,6 +619,24 @@ class SliceStore[S: slice.SliceObjectABC]:
 
         return slices[name]
 
+    def json_value(self, raw_value: object) -> object:
+        """
+        Convert an immutable value (i.e. coming from the inmanta DSL) into
+        a mutable, json-like python object.  Sequences are converted into
+        lists, and Mappings into dicts.  Any other value is kept as is.
+
+        :param raw_value: The raw value that should be converted.
+        """
+        match raw_value:
+            case str():
+                return raw_value
+            case Sequence() | SequenceProxy():
+                return [self.json_value(item) for item in raw_value]
+            case Mapping():
+                return {k: self.json_value(v) for k, v in raw_value.items()}
+            case _:
+                return raw_value
+
     def set_slice_attribute[T: object](
         self,
         name: str,
@@ -571,9 +657,11 @@ class SliceStore[S: slice.SliceObjectABC]:
                 f"Slice attributes can only be updated during {const.COMPILE_UPDATE} compiles"
             )
 
-        path.set_element(self.load_source_slices()[name].attributes, value)
-        path.set_element(self.get_one_slice(name).attributes, value)
-        return value
+        editable_value = self.json_value(value)
+
+        path.set_element(self.load_source_slices()[name].attributes, editable_value)
+        path.set_element(self.get_one_slice(name).attributes, editable_value)
+        return editable_value
 
     def get_slice_attribute[T: object](
         self,
@@ -594,6 +682,32 @@ class SliceStore[S: slice.SliceObjectABC]:
         """
         try:
             return path.get_element(self.get_one_slice(name).attributes)
+        except LookupError:
+            return default
+
+    def get_slice_previous_attribute[T: object](
+        self,
+        name: str,
+        path: dict_path.DictPath,
+        *,
+        default: T | None = None,
+    ) -> T | None:
+        """
+        Get the previous value of an attribute located at the given path in a slice.
+
+        :param name: The name of the slice.
+        :param path: The path within the slice towards the attribute that
+            should be fetched.
+        :param default: The default value to return if the attribute doesn't
+            exist in the slice.
+        """
+        slices = self.load_previous_slices()
+        if name not in slices:
+            # No previous version for the given slice
+            return default
+
+        try:
+            return path.get_element(slices[name].attributes)
         except LookupError:
             return default
 

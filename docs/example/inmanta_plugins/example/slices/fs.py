@@ -19,6 +19,7 @@ Contact: edvgui@gmail.com
 
 import typing
 import pydantic
+from pydantic.json_schema import SkipJsonSchema
 from collections.abc import Sequence
 
 from inmanta_plugins.git_ops import slice, store
@@ -58,6 +59,11 @@ class File(PathABC):
     content: str = pydantic.Field(
         default="",
         description="The textual content of the file."
+    )
+    previous_content: SkipJsonSchema[str | None] = pydantic.Field(
+        default=None,
+        description="The previous desired content of the file.",
+        exclude_if=slice.slice_update,
     )
 
 

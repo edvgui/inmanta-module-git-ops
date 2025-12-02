@@ -19,6 +19,7 @@ Contact: edvgui@gmail.com
 import functools
 import importlib
 import typing
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 
 from inmanta.plugins import Plugin, plugin
@@ -54,6 +55,7 @@ def unroll_slices(
 def attributes(
     slice_object_type: str,
     slice_object_attr: dict,
+    skip_attributes: Sequence[str] = [],
     **overrides: object,
 ) -> dict[str, object]:
     """
@@ -68,6 +70,9 @@ def attributes(
     :param slice_object_type: The type name of the object that will receive
         all the attributes values.
     :param slice_object_attr: The attributes dict, as returned by unroll_slices.
+    :param skip_attributes: Names of attributes which should not be part of the
+        dict.  Can be handy for processed attributes which need to have access
+        to the entity object itself.
     :param **overrides: Values that should be returned instead of the attribute
         value currently in the dict.
     """
@@ -94,7 +99,36 @@ def attributes(
     return {
         attr.name: overrides.get(attr.name, slice_object_attr[attr.name])
         for attr in slice_object_cls.entity_schema().all_attributes()
+        if attr.name not in skip_attributes
     }
+
+
+@plugin
+def get_slice_previous_attribute(
+    store_name: str,
+    name: str,
+    path: str,
+    *,
+    default: object | None = None,
+) -> object:
+    """
+    Get the previous value of an attribute located at the given path in a slice.
+    The path should be a valid dict path expression.
+
+    :param store_name: The name of the store in which the slice is defined.
+    :param name: The name of the slice within the store.
+    :param path: The path within the slice's attributes towards the value that
+        should be fetched.
+    :param default: Default value to return in case the attribute doesn't exist
+        in the previous version of the slice.
+    """
+    from inmanta_plugins.git_ops import store
+
+    return store.get_store(store_name).get_slice_previous_attribute(
+        name,
+        dict_path.to_path(path),
+        default=default,
+    )
 
 
 @plugin

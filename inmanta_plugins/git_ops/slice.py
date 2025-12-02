@@ -22,7 +22,9 @@ import itertools
 import logging
 import textwrap
 import typing
-from collections.abc import Mapping, Sequence
+from collections.abc import Generator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 import pydantic
@@ -32,6 +34,42 @@ from pydantic.json_schema import SkipJsonSchema
 import inmanta.ast.type as inmanta_type
 
 LOGGER = logging.getLogger(__name__)
+
+SLICE_UPDATE = ContextVar("SLICE_UPDATE", default=False)
+
+
+def slice_update(value: object) -> bool:
+    """
+    Assign this callable to the exclude_if attribute of fields that
+    should be present in the model but not in the slice source files.
+    The value of this function will always return False, except when
+    serializing slices before writing them to file.
+
+    .. code-block:: python
+
+        class Example(SliceObjectABC):
+            mode_attr: str = pydantic.Field(
+                default="a",
+                exclude_if=slice_update,
+            )
+
+
+    :param value: Whatever value is present in the attribute.
+    """
+    return SLICE_UPDATE.get()
+
+
+@contextmanager
+def exclude_model_values() -> Generator[None, None, None]:
+    """
+    Inside this context, serialization of slice objects will ignore
+    model_only attributes.  This allows to define attributes that
+    should be generated in the model, exported during the unroll, but
+    not saved to the slice files (as they have no additional values).
+    """
+    token = SLICE_UPDATE.set(True)
+    yield
+    SLICE_UPDATE.reset(token)
 
 
 def get_optional_type(python_type: type[object]) -> type[object]:
@@ -294,7 +332,7 @@ class EmbeddedSliceObjectABC(pydantic.BaseModel):
             "This dictates what to do with the model emitted by this slice (create/update/delete).  "
             "This value is not a user input, it is inserted into the slice source when the slice store is populated."
         ),
-        exclude=True,
+        exclude_if=slice_update,
     )
     path: SkipJsonSchema[str] = pydantic.Field(
         default=".",
@@ -302,7 +340,7 @@ class EmbeddedSliceObjectABC(pydantic.BaseModel):
             "The path leading to this slice object, starting from the root of the slice definition.  "
             "This value should be a valid dict path expression."
         ),
-        exclude=True,
+        exclude_if=slice_update,
     )
 
     @classmethod
@@ -463,17 +501,17 @@ class SliceObjectABC(EmbeddedSliceObjectABC):
     version: SkipJsonSchema[int] = pydantic.Field(
         default=0,
         description="The version of this slice.  Every time the slice source is modified, it is incremented.",
-        exclude=True,
+        exclude_if=slice_update,
     )
     slice_store: SkipJsonSchema[str] = pydantic.Field(
         default="",
         description="The name of the store in which the instance of the slice is defined.",
-        exclude=True,
+        exclude_if=slice_update,
     )
     slice_name: SkipJsonSchema[str] = pydantic.Field(
         default="",
         description="The identifying name of the slice within its store.",
-        exclude=True,
+        exclude_if=slice_update,
     )
 
     @classmethod

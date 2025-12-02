@@ -73,8 +73,35 @@ def test_fs(project: Project, monkeypatch: pytest.MonkeyPatch) -> None:
 
     # Add the slice to the active store
     with monkeypatch.context() as ctx:
-        ctx.setattr(const, "COMPILE_MODE", const.COMPILE_UPDATE)
+        ctx.setattr(const, "COMPILE_MODE", const.COMPILE_SYNC)
         project.compile(model)
 
     # We should now have one root folder in the model
     assert len(project.get_instances("example::slices::fs::RootFolder")) == 1
+
+    # Get the content of file a.txt
+    file_a = next(
+        f
+        for f in project.get_instances("example::slices::fs::File")
+        if f.name == "a.txt"
+    )
+    assert file_a.content == "a"
+    assert file_a.previous_content is None
+
+    # Update the content of file a
+    f1.files[0].content = "aa"
+    f1_path.write_text(yaml.safe_dump(f1.model_dump(mode="json")))
+
+    # Add the slice to the active store
+    with monkeypatch.context() as ctx:
+        ctx.setattr(const, "COMPILE_MODE", const.COMPILE_SYNC)
+        project.compile(model)
+
+    # Get the content of file a.txt
+    file_a = next(
+        f
+        for f in project.get_instances("example::slices::fs::File")
+        if f.name == "a.txt"
+    )
+    assert file_a.content == "aa"
+    assert file_a.previous_content == "a"
