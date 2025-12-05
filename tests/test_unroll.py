@@ -377,7 +377,7 @@ def test_desired_state_stability(project: Project, tmp_path: pathlib.Path) -> No
     """
     # Define a basic store
     store = SliceStore(
-        name="test",
+        name="test2",
         folder="file://" + str(tmp_path / "test"),
         schema=Slice,
     )
@@ -388,11 +388,11 @@ def test_desired_state_stability(project: Project, tmp_path: pathlib.Path) -> No
         import unittest
 
         unittest::Resource(
-            name="test",
+            name="test2",
             desired_value=std::json_dumps(
                 [
                     slice["attributes"]
-                    for slice in git_ops::unroll_slices("test")
+                    for slice in git_ops::unroll_slices("test2")
                 ]
             )
         )
@@ -504,7 +504,7 @@ def test_delete_embedded_entities(project: Project, tmp_path: pathlib.Path) -> N
     """
     # Define a basic store
     store = SliceStore(
-        name="test",
+        name="test3",
         folder="file://" + str(tmp_path / "test"),
         schema=Slice,
     )
@@ -515,11 +515,11 @@ def test_delete_embedded_entities(project: Project, tmp_path: pathlib.Path) -> N
         import unittest
 
         unittest::Resource(
-            name="test",
+            name="test3",
             desired_value=std::json_dumps(
                 [
                     slice["attributes"]
-                    for slice in git_ops::unroll_slices("test")
+                    for slice in git_ops::unroll_slices("test3")
                 ]
             )
         )
