@@ -599,7 +599,7 @@ class SliceStore[S: slice.SliceObjectABC]:
         """
         Get all the slices, this method is similar to load, but more explicit.
         """
-        return list(self.load_slices().values())
+        return sorted(self.load_slices().values(), key=lambda s: s.name)
 
     def get_one_slice(self, name: str) -> Slice:
         """
@@ -833,22 +833,34 @@ def merge_attributes(
 
         # Relation, attribute should be a list, and should be merged
         current_values = {
-            tuple(
-                (k, str(current_value[k])) for k in relation.entity.keys
-            ): current_value
+            relation.entity.instance_identity(current_value): current_value
             for current_value in typing.cast(list[dict], current[relation.name])
         }
         previous_values = {
-            tuple(
-                (k, str(previous_value[k])) for k in relation.entity.keys
-            ): previous_value
+            relation.entity.instance_identity(previous_value): previous_value
             for previous_value in typing.cast(
                 list[dict], previous[relation.name] if previous is not None else []
             )
         }
+
+        # Gather the identities of all the previous and current embedded entities
+        # without losing the order
+        all_identities = [
+            relation.entity.instance_identity(current_value)
+            for current_value in typing.cast(list[dict], current[relation.name])
+        ]
+        if previous is not None:
+            all_identities.extend(
+                [
+                    identity
+                    for previous_value in typing.cast(list[dict], previous[relation.name])
+                    if (identity := relation.entity.instance_identity(previous_value)) not in current_values
+                ]
+            )
+
         merged_relation: list[dict] = []
         merged[relation.name] = merged_relation
-        for key in current_values.keys() | previous_values.keys():
+        for key in all_identities:
             current_value = current_values.get(key)
             previous_value = previous_values.get(key)
             match (current_value, previous_value):

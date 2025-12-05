@@ -244,6 +244,15 @@ class SliceEntitySchema:
     attributes: Sequence[SliceEntityAttributeSchema]
     embedded_slice: bool = True
 
+    def instance_identity(self, instance: dict) -> Sequence[tuple[str, object]]:
+        """
+        Calculate the identity of an instance of this type, based on the keys
+        defined on this type.
+        """
+        return tuple(
+            (k, str(instance[k])) for k in self.keys
+        )
+
     def all_attributes(self) -> Sequence[SliceEntityAttributeSchema]:
         """
         Get all of the attributes that can be used by instances of this
