@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.1.2 - ?
+
+
 ## v0.1.1 - 2025-12-05
 
 - Improve desired state stability:
