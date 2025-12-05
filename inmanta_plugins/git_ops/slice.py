@@ -249,9 +249,7 @@ class SliceEntitySchema:
         Calculate the identity of an instance of this type, based on the keys
         defined on this type.
         """
-        return tuple(
-            (k, str(instance[k])) for k in self.keys
-        )
+        return tuple((k, str(instance[k])) for k in self.keys)
 
     def all_attributes(self) -> Sequence[SliceEntityAttributeSchema]:
         """

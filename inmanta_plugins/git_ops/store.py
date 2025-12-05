@@ -812,8 +812,8 @@ def merge_attributes(
                 case None, None:
                     merged[relation.name] = None
                 case None, dict():
-                    # Previous value should already have delete operation set
-                    assert previous_value["operation"] == "delete"
+                    # Take previous value and set its operation to delete
+                    previous_value["operation"] = "delete"
                     merged[relation.name] = previous_value
                 case dict(), _:
                     merged[relation.name] = merge_attributes(
@@ -853,8 +853,11 @@ def merge_attributes(
             all_identities.extend(
                 [
                     identity
-                    for previous_value in typing.cast(list[dict], previous[relation.name])
-                    if (identity := relation.entity.instance_identity(previous_value)) not in current_values
+                    for previous_value in typing.cast(
+                        list[dict], previous[relation.name]
+                    )
+                    if (identity := relation.entity.instance_identity(previous_value))
+                    not in current_values
                 ]
             )
 
@@ -865,8 +868,8 @@ def merge_attributes(
             previous_value = previous_values.get(key)
             match (current_value, previous_value):
                 case None, dict():
-                    # Previous value should already have delete operation set
-                    assert previous_value["operation"] == "delete"
+                    # Take previous value and set its operation to delete
+                    previous_value["operation"] = "delete"
                     merged_relation.append(previous_value)
                 case dict(), _:
                     merged_relation.append(
