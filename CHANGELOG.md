@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.1.1 - ?
+## v0.1.1 - 2025-12-05
 
 - Improve desired state stability:
   - Sort slices by name during unrolling
