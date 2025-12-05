@@ -16,6 +16,7 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 
+import copy
 import json
 import pathlib
 
@@ -367,3 +368,231 @@ def test_unroll_slices(
             }
         ],
     }
+
+
+def test_desired_state_stability(project: Project, tmp_path: pathlib.Path) -> None:
+    """
+    Make sure the unrolling of slices always produces the same
+    desired state.
+    """
+    # Define a basic store
+    store = SliceStore(
+        name="test2",
+        folder="file://" + str(tmp_path / "test"),
+        schema=Slice,
+    )
+
+    model = """
+        import git_ops
+        import git_ops::processors
+        import unittest
+
+        unittest::Resource(
+            name="test2",
+            desired_value=std::json_dumps(
+                [
+                    slice["attributes"]
+                    for slice in git_ops::unroll_slices("test2")
+                ]
+            )
+        )
+    """
+
+    base_attrs = ["operation", "path", "version", "slice_store", "slice_name"]
+
+    def remove_base_attrs(slice: object) -> object:
+        match slice:
+            case dict():
+                return {
+                    k: remove_base_attrs(v)
+                    for k, v in slice.items()
+                    if k not in base_attrs
+                }
+            case list():
+                return [remove_base_attrs(v) for v in slice]
+            case _:
+                return slice
+
+    def desired_state_value() -> object:
+        project.compile(model, no_dedent=False)
+        resource = project.get_resource("unittest::Resource")
+        assert resource is not None
+        return remove_base_attrs(json.loads(resource.desired_value))
+
+    # Empty store
+    assert desired_state_value() == []
+
+    # Add a first slice to the store
+    a = store.active_path / "a@v1.json"
+    a_val = {
+        "name": "a",
+        "description": None,
+        "unique_id": None,
+        "embedded_required": {
+            "name": "a",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        "embedded_optional": None,
+        "embedded_sequence": [],
+    }
+    a.write_text(json.dumps(a_val))
+    assert desired_state_value() == [a_val]
+
+    # Add a second slice, make sure the order of the slices is consistent
+    b = store.active_path / "b@v1.json"
+    b_val = {
+        "name": "a",
+        "description": None,
+        "unique_id": None,
+        "embedded_required": {
+            "name": "a",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        "embedded_optional": None,
+        "embedded_sequence": [],
+    }
+    b.write_text(json.dumps(b_val))
+    assert desired_state_value() == [a_val, b_val]
+
+    # Add embedded slices, make sure their ordering stays consistent
+    a_val["embedded_sequence"] = [
+        {
+            "name": "a",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        {
+            "name": "c",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        {
+            "name": "b",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+    ]
+    a.write_text(json.dumps(a_val))
+    assert desired_state_value() == [a_val, b_val]
+
+    # Add a newer version of a, which contains less embedded entities
+    # the merging of old and new desired state should stay consistent
+    a_v2 = store.active_path / "a@v2.json"
+    a_v2_val = copy.deepcopy(a_val)
+
+    # Pop the first element
+    a_v2_val["embedded_sequence"] = a_v2_val["embedded_sequence"][1:]
+    a_v2.write_text(json.dumps(a_v2_val))
+
+    # New value should still include the deleted element, but it will be
+    # moved to the end of the list as deleted elements are inserted last
+    a_merged_val = copy.deepcopy(a_v2_val)
+    a_merged_val["embedded_sequence"].append(a_val["embedded_sequence"][0])
+    assert desired_state_value() == [a_merged_val, b_val]
+
+
+def test_delete_embedded_entities(project: Project, tmp_path: pathlib.Path) -> None:
+    """
+    Test the unrolling behavior when an embedded slice is being removed.
+    """
+    # Define a basic store
+    store = SliceStore(
+        name="test3",
+        folder="file://" + str(tmp_path / "test"),
+        schema=Slice,
+    )
+
+    model = """
+        import git_ops
+        import git_ops::processors
+        import unittest
+
+        unittest::Resource(
+            name="test3",
+            desired_value=std::json_dumps(
+                [
+                    slice["attributes"]
+                    for slice in git_ops::unroll_slices("test3")
+                ]
+            )
+        )
+    """
+
+    base_attrs = ["path", "version", "slice_store", "slice_name"]
+
+    def remove_base_attrs(slice: object) -> object:
+        match slice:
+            case dict():
+                return {
+                    k: remove_base_attrs(v)
+                    for k, v in slice.items()
+                    if k not in base_attrs
+                }
+            case list():
+                return [remove_base_attrs(v) for v in slice]
+            case _:
+                return slice
+
+    def desired_state_value() -> object:
+        project.compile(model, no_dedent=False)
+        resource = project.get_resource("unittest::Resource")
+        assert resource is not None
+        return remove_base_attrs(json.loads(resource.desired_value))
+
+    # Empty store
+    assert desired_state_value() == []
+
+    # Add a first slice to the store
+    a = store.active_path / "a@v1.json"
+    a_val = {
+        "name": "a",
+        "description": None,
+        "unique_id": None,
+        "embedded_required": {
+            "name": "a",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+            "operation": "create",
+        },
+        "embedded_optional": {
+            "name": "a",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+            "operation": "create",
+        },
+        "embedded_sequence": [
+            {
+                "name": "a",
+                "description": None,
+                "unique_id": None,
+                "recursive_slice": [],
+                "operation": "create",
+            }
+        ],
+        "operation": "create",
+    }
+    a.write_text(json.dumps(a_val))
+    assert desired_state_value() == [a_val]
+
+    # Update the slice, remove the embedded optional entity
+    a_v2 = store.active_path / "a@v2.json"
+    a_v2_val = copy.deepcopy(a_val)
+    a_v2_val["embedded_optional"] = None
+    a_v2_val["embedded_sequence"] = []
+    a_v2.write_text(json.dumps(a_v2_val))
+
+    a_merged_val = copy.deepcopy(a_val)
+    a_merged_val["operation"] = "update"
+    a_merged_val["embedded_required"]["operation"] = "update"
+    a_merged_val["embedded_optional"]["operation"] = "delete"
+    a_merged_val["embedded_sequence"][0]["operation"] = "delete"
+    assert desired_state_value() == [a_merged_val]
