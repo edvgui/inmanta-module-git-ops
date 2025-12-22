@@ -58,13 +58,10 @@ class SliceFile[S: slice.SliceObjectABC]:
         based on the file extension.  Return the json-like object
         as a python dict.
         """
-        type_adapter = pydantic.TypeAdapter(self.schema)
         if self.extension == "json":
-            attributes = type_adapter.validate_python(json.loads(self.path.read_text()))
+            attributes = json.loads(self.path.read_text())
         elif self.extension in ["yaml", "yml"]:
-            attributes = type_adapter.validate_python(
-                yaml.safe_load(self.path.read_text())
-            )
+            attributes = yaml.safe_load(self.path.read_text())
         else:
             raise ValueError(f"Unsupported slice file extension: {self.extension}")
 
