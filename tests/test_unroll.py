@@ -216,6 +216,9 @@ def test_unroll_slices(
         ctx.setattr(const, "COMPILE_MODE", const.COMPILE_SYNC)
         project.compile(model, no_dedent=False)
 
+    # And export
+    project.compile(model, no_dedent=False)
+
     assert s1_v1.exists()
     assert not s1_v2.exists()
     r1 = project.get_resource("unittest::Resource", name="test:s1")
@@ -258,6 +261,9 @@ def test_unroll_slices(
     with monkeypatch.context() as ctx:
         ctx.setattr(const, "COMPILE_MODE", const.COMPILE_SYNC)
         project.compile(model, no_dedent=False)
+
+    # And export
+    project.compile(model, no_dedent=False)
 
     assert s1_v1.exists()
     assert s1_v2.exists()
@@ -328,6 +334,9 @@ def test_unroll_slices(
     with monkeypatch.context() as ctx:
         ctx.setattr(const, "COMPILE_MODE", const.COMPILE_SYNC)
         project.compile(model, no_dedent=False)
+
+    # And export
+    project.compile(model, no_dedent=False)
 
     assert s1_v1.exists()
     assert s1_v2.exists()
