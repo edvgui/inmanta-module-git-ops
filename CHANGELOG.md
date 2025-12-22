@@ -2,6 +2,7 @@
 
 ## v0.1.2 - ?
 
+- Fix export compiles containing deleted slices
 
 ## v0.1.1 - 2025-12-05
 
