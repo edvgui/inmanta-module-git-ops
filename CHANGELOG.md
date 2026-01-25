@@ -2,6 +2,7 @@
 
 ## v0.1.3 - ?
 
+- Fix export compiles containing deleted slices (bad path attribute)
 
 ## v0.1.2 - 2025-12-22
 
