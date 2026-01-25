@@ -503,7 +503,13 @@ class SliceStore[S: slice.SliceObjectABC]:
             if current.deleted:
                 # We need to get the attributes of the last undeleted
                 # version, otherwise we don't know what we have to delete
-                attributes = previous_slices[s].attributes
+                attributes = merge_attributes(
+                    current=previous_slices[s].attributes,
+                    previous=previous_slices[s].attributes,
+                    operation="delete",
+                    path=dict_path.NullPath(),
+                    schema=self.schema.entity_schema(),
+                )
             else:
                 # Normal merge
                 new = s not in previous_slices
