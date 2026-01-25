@@ -805,12 +805,14 @@ def merge_attributes(
                 if previous is not None
                 else None
             )
+            item_path = path + dict_path.InDict(relation.name)
             match (current_value, previous_value):
                 case None, None:
                     merged[relation.name] = None
                 case None, dict():
                     # Take previous value and set its operation to delete
                     previous_value["operation"] = "delete"
+                    previous_value["path"] = str(item_path)
                     merged[relation.name] = previous_value
                 case dict(), _:
                     merged[relation.name] = merge_attributes(
@@ -821,7 +823,7 @@ def merge_attributes(
                             if operation == "delete"
                             else "create" if previous_value is None else "update"
                         ),
-                        path=path + dict_path.InDict(relation.name),
+                        path=item_path,
                         schema=relation.entity,
                     )
                 case _:
@@ -863,10 +865,12 @@ def merge_attributes(
         for key in all_identities:
             current_value = current_values.get(key)
             previous_value = previous_values.get(key)
+            item_path = path + dict_path.KeyedList(relation.name, key)
             match (current_value, previous_value):
                 case None, dict():
                     # Take previous value and set its operation to delete
                     previous_value["operation"] = "delete"
+                    previous_value["path"] = str(item_path)
                     merged_relation.append(previous_value)
                 case dict(), _:
                     merged_relation.append(
@@ -878,7 +882,7 @@ def merge_attributes(
                                 if operation == "delete"
                                 else "create" if previous_value is None else "update"
                             ),
-                            path=path + dict_path.KeyedList(relation.name, key),
+                            path=item_path,
                             schema=relation.entity,
                         )
                     )
