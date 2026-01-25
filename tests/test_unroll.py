@@ -617,11 +617,6 @@ def test_delete_embedded_entities(project: Project, tmp_path: pathlib.Path) -> N
     a_v2_val["embedded_sequence"] = []
     a_v2.write_text(json.dumps(a_v2_val))
 
-    a_merged_val = copy.deepcopy(a_val)
-    a_merged_val["operation"] = "update"
-    a_merged_val["embedded_required"]["operation"] = "update"
-    a_merged_val["embedded_optional"]["operation"] = "delete"
-    a_merged_val["embedded_sequence"][0]["operation"] = "delete"
     assert desired_state_value() == [
         {
             "operation": "update",
@@ -634,6 +629,49 @@ def test_delete_embedded_entities(project: Project, tmp_path: pathlib.Path) -> N
             "unique_id": None,
             "embedded_required": {
                 "operation": "update",
+                "path": "embedded_required",
+                "name": "a",
+                "description": None,
+                "unique_id": None,
+                "recursive_slice": [],
+            },
+            "embedded_optional": {
+                "operation": "delete",
+                "path": "embedded_optional",
+                "name": "a",
+                "description": None,
+                "unique_id": None,
+                "recursive_slice": [],
+            },
+            "embedded_sequence": [
+                {
+                    "operation": "delete",
+                    "path": "embedded_sequence[name=a]",
+                    "name": "a",
+                    "description": None,
+                    "unique_id": None,
+                    "recursive_slice": [],
+                }
+            ],
+        }
+    ]
+
+    # Remove the slice completely
+    a_v2 = store.active_path / "a@v2.json"
+    a_v2.write_text(json.dumps({}))
+
+    assert desired_state_value() == [
+        {
+            "operation": "delete",
+            "path": ".",
+            "version": 2,
+            "slice_store": "test3",
+            "slice_name": "a",
+            "name": "a",
+            "description": None,
+            "unique_id": None,
+            "embedded_required": {
+                "operation": "delete",
                 "path": "embedded_required",
                 "name": "a",
                 "description": None,
