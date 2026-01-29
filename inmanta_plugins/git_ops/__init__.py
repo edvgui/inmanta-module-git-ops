@@ -177,6 +177,19 @@ def update_slice_attribute(
     )
 
 
+def get_parent_path(path: dict_path.DictPath) -> dict_path.DictPath:
+    """
+    If the path points to an entry in a dict-tree, return the path that
+    points to the parent of that entry.  If the path points to the root
+    of the tree, return the root of the tree.
+    """
+    return (
+        dict_path.ComposedPath(path=path.get_path_sections()[:-1])
+        if len(path.get_path_sections()) > 1
+        else dict_path.NullPath()
+    )
+
+
 class AttributeProcessorFunction[**P, R](typing.Protocol):
     """
     Define the interface that processor functions must implement.
@@ -251,6 +264,14 @@ def attribute_processor[F: AttributeProcessorFunction](func: F) -> F:
 
         if const.COMPILE_MODE != const.COMPILE_UPDATE:
             # The slice can not be updated, we keep whatever value we have
+            return previous_value
+
+        # Get the embedded (or root) slice carrying the processed value
+        value_path = dict_path.to_path(path)
+        parent_path = get_parent_path(value_path)
+        parent = get_slice_attribute(store_name, name, str(parent_path))
+        if parent["operation"] == const.SLICE_DELETE:
+            # We can not modify a deleted slice, stick to the previous value
             return previous_value
 
         # Call the processor and set the new value in the slice

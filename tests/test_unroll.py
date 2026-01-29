@@ -46,17 +46,28 @@ def test_unroll_slices(
 
         for slice in git_ops::unroll_slices("test"):
             attributes = slice["attributes"]
-            unique_id = attributes["operation"] == "delete"
-                ? attributes["unique_id"]
-                : git_ops::processors::unique_integer(
+            unique_id = git_ops::processors::unique_integer(
+                slice["store_name"],
+                slice["name"],
+                "unique_id",
+                used_integers=git_ops::processors::used_values(
+                    slice["store_name"],
+                    "unique_id",
+                ),
+            )
+
+            for embedded in attributes["embedded_sequence"]:
+                git_ops::processors::unique_integer(
                     slice["store_name"],
                     slice["name"],
-                    "unique_id",
+                    embedded["path"] + ".unique_id",
                     used_integers=git_ops::processors::used_values(
                         slice["store_name"],
-                        "unique_id",
+                        "embedded_sequence[name=*].unique_id",
+                        slice_matching={"unique_id": unique_id},
                     ),
                 )
+            end
 
             unittest::Resource(
                 name=slice["store_name"] + ":" + slice["name"],
@@ -259,6 +270,9 @@ def test_unroll_slices(
 
     # Sync changes
     with monkeypatch.context() as ctx:
+        ctx.setattr(const, "COMPILE_MODE", const.COMPILE_UPDATE)
+        project.compile(model, no_dedent=False)
+
         ctx.setattr(const, "COMPILE_MODE", const.COMPILE_SYNC)
         project.compile(model, no_dedent=False)
 
@@ -298,7 +312,7 @@ def test_unroll_slices(
                 "path": "embedded_sequence[name=ac]",
                 "name": "ac",
                 "description": None,
-                "unique_id": None,
+                "unique_id": 0,
                 "recursive_slice": [],
             }
         ],
@@ -326,9 +340,84 @@ def test_unroll_slices(
         "embedded_sequence": [],
     }
 
+    # Delete embedded entity
+    s1_obj.embedded_sequence = []
+    s1.write_text(yaml.safe_dump(s1_obj.model_dump(mode="json")))
+    s1_v3 = store.active_path / "s1@v3.json"
+
+    # Sync changes
+    with monkeypatch.context() as ctx:
+        ctx.setattr(const, "COMPILE_MODE", const.COMPILE_UPDATE)
+        project.compile(model, no_dedent=False)
+
+        ctx.setattr(const, "COMPILE_MODE", const.COMPILE_SYNC)
+        project.compile(model, no_dedent=False)
+
+    assert s1_v1.exists()
+    assert s1_v2.exists()
+    assert s1_v3.exists()
+    assert json.loads(s1_v3.read_text()) == {
+        "name": "a",
+        "description": "Updated",
+        "unique_id": 0,
+        "embedded_required": {
+            "name": "aa",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        "embedded_optional": {
+            "name": "ab",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        "embedded_sequence": [],
+    }
+
+    # And export
+    project.compile(model, no_dedent=False)
+
+    r1 = project.get_resource("unittest::Resource", name="test:s1")
+    assert r1 is not None
+    assert json.loads(r1.desired_value) == {
+        "name": "a",
+        "description": "Updated",
+        "unique_id": 0,
+        "operation": "update",
+        "path": ".",
+        "version": 3,
+        "embedded_required": {
+            "operation": "update",
+            "path": "embedded_required",
+            "name": "aa",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        "embedded_optional": {
+            "operation": "update",
+            "path": "embedded_optional",
+            "name": "ab",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        "embedded_sequence": [
+            {
+                "operation": "delete",
+                "path": "embedded_sequence[name=ac]",
+                "name": "ac",
+                "description": None,
+                "unique_id": 0,
+                "recursive_slice": [],
+            }
+        ],
+    }
+
     # Delete a slice
     s1.unlink()
-    s1_v3 = store.active_path / "s1@v3.json"
+    s1_v4 = store.active_path / "s1@v3.json"
 
     # Sync changes
     with monkeypatch.context() as ctx:
@@ -341,6 +430,7 @@ def test_unroll_slices(
     assert s1_v1.exists()
     assert s1_v2.exists()
     assert s1_v3.exists()
+    assert s1_v4.exists()
     r1 = project.get_resource("unittest::Resource", name="test:s1")
     assert r1 is not None
     assert json.loads(r1.desired_value) == {
@@ -349,7 +439,7 @@ def test_unroll_slices(
         "unique_id": 0,
         "operation": "delete",
         "path": ".",
-        "version": 3,
+        "version": 4,
         "embedded_required": {
             "operation": "delete",
             "path": "embedded_required",
@@ -372,7 +462,7 @@ def test_unroll_slices(
                 "path": "embedded_sequence[name=ac]",
                 "name": "ac",
                 "description": None,
-                "unique_id": None,
+                "unique_id": 0,
                 "recursive_slice": [],
             }
         ],

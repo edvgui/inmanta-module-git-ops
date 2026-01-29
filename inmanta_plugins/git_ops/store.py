@@ -33,7 +33,7 @@ from inmanta_plugins.config.const import InmantaPath, SystemPath
 from inmanta.compiler import finalizer
 from inmanta.execute.proxy import SequenceProxy
 from inmanta.util import dict_path
-from inmanta_plugins.git_ops import Slice, const, slice
+from inmanta_plugins.git_ops import Slice, const, get_parent_path, slice
 
 # Dict registering all the slice stores when they are being created
 # This allows to find the store back, to access its slices.
@@ -468,7 +468,7 @@ class SliceStore[S: slice.SliceObjectABC]:
                     merge_attributes(
                         p_current,
                         p_previous,
-                        operation="delete",
+                        operation=const.SLICE_DELETE,
                         path=dict_path.NullPath(),
                         schema=self.schema.entity_schema(),
                     ),
@@ -506,7 +506,7 @@ class SliceStore[S: slice.SliceObjectABC]:
                 attributes = merge_attributes(
                     current=previous_slices[s].attributes,
                     previous=previous_slices[s].attributes,
-                    operation="delete",
+                    operation=const.SLICE_DELETE,
                     path=dict_path.NullPath(),
                     schema=self.schema.entity_schema(),
                 )
@@ -662,8 +662,33 @@ class SliceStore[S: slice.SliceObjectABC]:
 
         editable_value = self.json_value(value)
 
-        path.set_element(self.load_source_slices()[name].attributes, editable_value)
+        # Get the parent slice, make sure it is not being deleted, otherwise
+        # we can not write to it
+        source = self.load_source_slices()[name].attributes
+
+        try:
+            # If the embedded slice is the root slice, we just get the empty
+            # slice
+            parent_value = get_parent_path(path).get_element(source)
+        except LookupError:
+            # If the embedded slice has been removed, we get a lookup
+            # error
+            parent_value = {}
+
+        if parent_value.get("operation", const.SLICE_DELETE) == const.SLICE_DELETE:
+            raise RuntimeError(
+                f"Can not set attribute on deleted slice: {repr(str(parent_value))} in "
+                f"Slice(name={repr(name)}) is deleted from source slice and can not "
+                "be modified."
+            )
+
+        # Edit the source slice, so it gets saved back to file
+        path.set_element(source, editable_value)
+
+        # Edit the merged slice, so the change is visible in the model
         path.set_element(self.get_one_slice(name).attributes, editable_value)
+
+        # Return the editable value transparently
         return editable_value
 
     def get_slice_attribute[T: object](
@@ -817,7 +842,7 @@ def merge_attributes(
                     merged[relation.name] = None
                 case None, dict():
                     # Take previous value and set its operation to delete
-                    previous_value["operation"] = "delete"
+                    previous_value["operation"] = const.SLICE_DELETE
                     previous_value["path"] = str(item_path)
                     merged[relation.name] = previous_value
                 case dict(), _:
@@ -826,8 +851,12 @@ def merge_attributes(
                         previous_value,
                         operation=(
                             operation
-                            if operation == "delete"
-                            else "create" if previous_value is None else "update"
+                            if operation == const.SLICE_DELETE
+                            else (
+                                const.SLICE_CREATE
+                                if previous_value is None
+                                else const.SLICE_UPDATE
+                            )
                         ),
                         path=item_path,
                         schema=relation.entity,
@@ -875,7 +904,7 @@ def merge_attributes(
             match (current_value, previous_value):
                 case None, dict():
                     # Take previous value and set its operation to delete
-                    previous_value["operation"] = "delete"
+                    previous_value["operation"] = const.SLICE_DELETE
                     previous_value["path"] = str(item_path)
                     merged_relation.append(previous_value)
                 case dict(), _:
@@ -885,8 +914,12 @@ def merge_attributes(
                             previous_value,
                             operation=(
                                 operation
-                                if operation == "delete"
-                                else "create" if previous_value is None else "update"
+                                if operation == const.SLICE_DELETE
+                                else (
+                                    const.SLICE_CREATE
+                                    if previous_value is None
+                                    else const.SLICE_UPDATE
+                                )
                             ),
                             path=item_path,
                             schema=relation.entity,
