@@ -678,7 +678,9 @@ class SliceStore[S: slice.SliceObjectABC]:
 
         if parent_value.get("operation", "delete") == "delete":
             raise RuntimeError(
-                f"Processor is trying to save value in deleted slice element at path {path}"
+                f"Can not set attribute on deleted slice: {repr(str(parent_value))} in "
+                f"Slice(name={repr(name)}) is deleted from source slice and can not "
+                "be modified."
             )
 
         # Edit the source slice, so it gets saved back to file
