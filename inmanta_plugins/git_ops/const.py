@@ -31,3 +31,7 @@ COMPILE_MODE_ADAPTER = pydantic.TypeAdapter(CompileMode)
 COMPILE_MODE = COMPILE_MODE_ADAPTER.validate_python(
     os.getenv(COMPILE_MODE_ENV_VAR, COMPILE_EXPORT)
 )
+
+SLICE_CREATE = "create"
+SLICE_UPDATE = "update"
+SLICE_DELETE = "delete"
