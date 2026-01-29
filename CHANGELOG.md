@@ -2,6 +2,8 @@
 
 ## v0.1.4 - ?
 
+- Prevent processing of attributes of deleted slice elements.
+- Raise explicit exception when trying to set a value of an attribute on a deleted slice element.
 
 ## v0.1.3 - 2026-01-25
 
