@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.1.4 - ?
+## v0.1.4 - 2026-01-29
 
 - Prevent processing of attributes of deleted slice elements.
 - Raise explicit exception when trying to set a value of an attribute on a deleted slice element.
