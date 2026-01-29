@@ -662,8 +662,32 @@ class SliceStore[S: slice.SliceObjectABC]:
 
         editable_value = self.json_value(value)
 
-        path.set_element(self.load_source_slices()[name].attributes, editable_value)
+        # Get the parent slice, make sure it is not being deleted, otherwise
+        # we can not write to it
+        source = self.load_source_slices()[name].attributes
+        parent_path = dict_path.ComposedPath(path=path.get_path_sections()[:-1])
+
+        try:
+            # If the embedded slice is the root slice, we just get the empty
+            # slice
+            parent_value = parent_path.get_element(source)
+        except LookupError:
+            # If the embedded slice has been removed, we get a lookup
+            # error
+            parent_value = {}
+
+        if parent_value.get("operation", "delete") == "delete":
+            raise RuntimeError(
+                f"Processor is trying to save value in deleted slice element at path {path}"
+            )
+
+        # Edit the source slice, so it gets saved back to file
+        path.set_element(source, editable_value)
+
+        # Edit the merged slice, so the change is visible in the model
         path.set_element(self.get_one_slice(name).attributes, editable_value)
+
+        # Return the editable value transparently
         return editable_value
 
     def get_slice_attribute[T: object](
