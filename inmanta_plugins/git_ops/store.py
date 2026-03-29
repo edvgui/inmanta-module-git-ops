@@ -841,10 +841,14 @@ def merge_attributes(
                 case None, None:
                     merged[relation.name] = None
                 case None, dict():
-                    # Take previous value and set its operation to delete
-                    previous_value["operation"] = const.SLICE_DELETE
-                    previous_value["path"] = str(item_path)
-                    merged[relation.name] = previous_value
+                    # This is a deletion, recurse it
+                    merged[relation.name] = merge_attributes(
+                        previous_value,
+                        previous_value,
+                        operation=const.SLICE_DELETE,
+                        path=item_path,
+                        schema=relation.entity,
+                    )
                 case dict(), _:
                     merged[relation.name] = merge_attributes(
                         current_value,
@@ -903,10 +907,16 @@ def merge_attributes(
             item_path = path + dict_path.KeyedList(relation.name, key)
             match (current_value, previous_value):
                 case None, dict():
-                    # Take previous value and set its operation to delete
-                    previous_value["operation"] = const.SLICE_DELETE
-                    previous_value["path"] = str(item_path)
-                    merged_relation.append(previous_value)
+                    # This is a deletion, recurse it
+                    merged_relation.append(
+                        merge_attributes(
+                            previous_value,
+                            previous_value,
+                            operation=const.SLICE_DELETE,
+                            path=item_path,
+                            schema=relation.entity,
+                        )
+                    )
                 case dict(), _:
                     merged_relation.append(
                         merge_attributes(
