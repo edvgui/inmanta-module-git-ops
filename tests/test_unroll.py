@@ -643,13 +643,27 @@ def test_delete_embedded_entities(project: Project, tmp_path: pathlib.Path) -> N
             "name": "a",
             "description": None,
             "unique_id": None,
-            "recursive_slice": [],
+            "recursive_slice": [
+                {
+                    "name": "a",
+                    "description": None,
+                    "unique_id": None,
+                    "recursive_slice": [],
+                },
+            ],
         },
         "embedded_optional": {
             "name": "a",
             "description": None,
             "unique_id": None,
-            "recursive_slice": [],
+            "recursive_slice": [
+                {
+                    "name": "a",
+                    "description": None,
+                    "unique_id": None,
+                    "recursive_slice": [],
+                },
+            ],
         },
         "embedded_sequence": [
             {
@@ -684,7 +698,16 @@ def test_delete_embedded_entities(project: Project, tmp_path: pathlib.Path) -> N
                 "name": "a",
                 "description": None,
                 "unique_id": None,
-                "recursive_slice": [],
+                "recursive_slice": [
+                    {
+                        "operation": "create",
+                        "path": "embedded_required.recursive_slice[name=a]",
+                        "name": "a",
+                        "description": None,
+                        "unique_id": None,
+                        "recursive_slice": [],
+                    },
+                ],
             },
             "embedded_optional": {
                 "operation": "create",
@@ -692,7 +715,16 @@ def test_delete_embedded_entities(project: Project, tmp_path: pathlib.Path) -> N
                 "name": "a",
                 "description": None,
                 "unique_id": None,
-                "recursive_slice": [],
+                "recursive_slice": [
+                    {
+                        "operation": "create",
+                        "path": "embedded_optional.recursive_slice[name=a]",
+                        "name": "a",
+                        "description": None,
+                        "unique_id": None,
+                        "recursive_slice": [],
+                    },
+                ],
             },
             "embedded_sequence": [
                 {
@@ -739,7 +771,16 @@ def test_delete_embedded_entities(project: Project, tmp_path: pathlib.Path) -> N
                 "name": "a",
                 "description": None,
                 "unique_id": None,
-                "recursive_slice": [],
+                "recursive_slice": [
+                    {
+                        "operation": "update",
+                        "path": "embedded_required.recursive_slice[name=a]",
+                        "name": "a",
+                        "description": None,
+                        "unique_id": None,
+                        "recursive_slice": [],
+                    },
+                ],
             },
             "embedded_optional": {
                 "operation": "delete",
@@ -747,7 +788,16 @@ def test_delete_embedded_entities(project: Project, tmp_path: pathlib.Path) -> N
                 "name": "a",
                 "description": None,
                 "unique_id": None,
-                "recursive_slice": [],
+                "recursive_slice": [
+                    {
+                        "operation": "delete",
+                        "path": "embedded_optional.recursive_slice[name=a]",
+                        "name": "a",
+                        "description": None,
+                        "unique_id": None,
+                        "recursive_slice": [],
+                    },
+                ],
             },
             "embedded_sequence": [
                 {
@@ -791,7 +841,16 @@ def test_delete_embedded_entities(project: Project, tmp_path: pathlib.Path) -> N
                 "name": "a",
                 "description": None,
                 "unique_id": None,
-                "recursive_slice": [],
+                "recursive_slice": [
+                    {
+                        "operation": "delete",
+                        "path": "embedded_required.recursive_slice[name=a]",
+                        "name": "a",
+                        "description": None,
+                        "unique_id": None,
+                        "recursive_slice": [],
+                    },
+                ],
             },
             "embedded_optional": {
                 "operation": "delete",
@@ -799,7 +858,16 @@ def test_delete_embedded_entities(project: Project, tmp_path: pathlib.Path) -> N
                 "name": "a",
                 "description": None,
                 "unique_id": None,
-                "recursive_slice": [],
+                "recursive_slice": [
+                    {
+                        "operation": "delete",
+                        "path": "embedded_optional.recursive_slice[name=a]",
+                        "name": "a",
+                        "description": None,
+                        "unique_id": None,
+                        "recursive_slice": [],
+                    },
+                ],
             },
             "embedded_sequence": [
                 {
