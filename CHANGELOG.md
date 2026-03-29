@@ -2,6 +2,7 @@
 
 ## v0.1.5 - ?
 
+- Fix recursive deletion
 
 ## v0.1.4 - 2026-01-29
 
