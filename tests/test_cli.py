@@ -35,7 +35,7 @@ def test_basics() -> None:
 
     # Test generation of the model
     subprocess.run(
-        ["git-ops", "generate"],
+        ["git-ops", "generate", "--explicit-parent-relations"],
         check=True,
         env={"INMANTA_GIT_OPS_MODULE_PATH": str(example_path), **os.environ},
     )

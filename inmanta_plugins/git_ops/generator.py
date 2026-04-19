@@ -18,7 +18,6 @@ Contact: edvgui@gmail.com
 
 import functools
 import importlib
-import os
 import pathlib
 from collections.abc import Sequence
 
@@ -62,12 +61,9 @@ ENTITIES: dict[Sequence[str], Entity] = {}
 
 
 # Define some configuration options for the generator
-# explicit_parent_relations: bool = False
 # When true, the generator will use as parent relation name the name
 # of the parent entity, instead of "parent".
-EXPLICIT_PARENT_RELATIONS: bool = (
-    os.getenv("INMANTA_GIT_OPS_EXPLICIT_PARENT_RELATIONS", "false").lower() == "true"
-)
+EXPLICIT_PARENT_RELATIONS: bool = False
 
 
 @functools.lru_cache
@@ -213,7 +209,7 @@ def get_relation(
 
     parent_relation = EntityRelation(
         name=(
-            utils.inmanta_safe_name(parent.name)
+            utils.inmanta_safe_name(utils.camel_case_to_snake_case(parent.name))
             if EXPLICIT_PARENT_RELATIONS
             else "parent"
         ),
