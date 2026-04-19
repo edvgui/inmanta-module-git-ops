@@ -36,6 +36,9 @@ MODULE: ModuleV2 | None = None
     type=click.Path(exists=True, file_okay=False),
     help="Path to the module to operate on.",
     envvar="INMANTA_GIT_OPS_MODULE_PATH",
+    default=".",
+    show_default=True,
+    show_envvar=True,
 )
 def cli(module_path: str) -> None:
     """
