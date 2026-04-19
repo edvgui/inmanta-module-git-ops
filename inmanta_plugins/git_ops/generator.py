@@ -18,6 +18,7 @@ Contact: edvgui@gmail.com
 
 import functools
 import importlib
+import os
 import pathlib
 from collections.abc import Sequence
 
@@ -58,6 +59,15 @@ from inmanta_plugins.git_ops import slice
 
 # Cache entities to support recursive schema generation
 ENTITIES: dict[Sequence[str], Entity] = {}
+
+
+# Define some configuration options for the generator
+# explicit_parent_relations: bool = False
+# When true, the generator will use as parent relation name the name
+# of the parent entity, instead of "parent".
+EXPLICIT_PARENT_RELATIONS: bool = (
+    os.getenv("INMANTA_GIT_OPS_EXPLICIT_PARENT_RELATIONS", "false").lower() == "true"
+)
 
 
 @functools.lru_cache
@@ -202,7 +212,11 @@ def get_relation(
     builder = get_module_builder(schema.entity.path[0])
 
     parent_relation = EntityRelation(
-        name="parent",
+        name=(
+            utils.inmanta_safe_name(parent.name)
+            if EXPLICIT_PARENT_RELATIONS
+            else "parent"
+        ),
         path=schema.entity.path,
         cardinality=(1, 1),
         description="Relation to parent",
