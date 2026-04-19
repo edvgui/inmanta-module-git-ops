@@ -30,7 +30,7 @@ FolderFactory.root_folder [1] -- Folder
 
 implementation construct_folder for FolderFactory:
     folder = FolderDirectories(
-        parent=self.parent,
+        folder=self.parent,
         **git_ops::attributes("example::slices::fs::Folder", self.attributes),
         files=[
             File(
