@@ -16,17 +16,19 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 
-from collections.abc import Sequence
 import typing
+from collections.abc import Sequence
 
 import pydantic
-from inmanta_plugins.git_ops import slice
+
+from inmanta_plugins.git_ops import slice, store
 
 
 class Slice(slice.SliceObjectABC):
     """
     Main slice.
     """
+
     keys: typing.ClassVar[Sequence[str]] = ["name"]
 
     name: str = pydantic.Field(description="The name of the slice.")
@@ -54,3 +56,10 @@ class Slice(slice.SliceObjectABC):
         default_factory=dict,
         description="An example of dict field.",
     )
+
+
+STORE = store.SliceStore(
+    name="simple",
+    folder="inmanta:///files/simple/",
+    schema=Slice,
+)

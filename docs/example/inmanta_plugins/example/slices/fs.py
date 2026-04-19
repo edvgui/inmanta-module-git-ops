@@ -16,11 +16,11 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 
-
 import typing
+from collections.abc import Sequence
+
 import pydantic
 from pydantic.json_schema import SkipJsonSchema
-from collections.abc import Sequence
 
 from inmanta_plugins.git_ops import slice, store
 
@@ -31,7 +31,7 @@ class PathABC(slice.EmbeddedSliceObjectABC):
     This class contains all of the shared attributes that both files and
     directories have.
     """
-    
+
     keys: typing.ClassVar[Sequence[str]] = ["name"]
 
     name: str = pydantic.Field(
@@ -42,12 +42,10 @@ class PathABC(slice.EmbeddedSliceObjectABC):
         description="The permissions to configure for this element.",
     )
     owner: str | None = pydantic.Field(
-        default=None,
-        description="The name or uid of the element owner."
+        default=None, description="The name or uid of the element owner."
     )
     group: str | None = pydantic.Field(
-        default=None,
-        description="The name or gid of the element group."
+        default=None, description="The name or gid of the element group."
     )
 
 
@@ -55,10 +53,9 @@ class File(PathABC):
     """
     A text file in a folder, with its textual content.
     """
-    
+
     content: str = pydantic.Field(
-        default="",
-        description="The textual content of the file."
+        default="", description="The textual content of the file."
     )
     previous_content: SkipJsonSchema[str | None] = pydantic.Field(
         default=None,
@@ -71,13 +68,13 @@ class Folder(PathABC):
     """
     A folder in the filesystem tree, containing files and other folders.
     """
+
     files: Sequence[File] = pydantic.Field(
-        default_factory=list,
-        description="A list of files to manage in the folder."
+        default_factory=list, description="A list of files to manage in the folder."
     )
     directories: Sequence["Folder"] = pydantic.Field(
         default_factory=list,
-        description="A list of folder to manage within this folder."
+        description="A list of folder to manage within this folder.",
     )
 
 
@@ -85,6 +82,7 @@ class RootFolder(slice.SliceObjectABC, Folder):
     """
     The root folder, and the root of the slice.
     """
+
     keys: typing.ClassVar[Sequence[str]] = ["root", "name"]
 
     root: str = pydantic.Field(

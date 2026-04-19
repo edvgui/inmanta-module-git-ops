@@ -19,7 +19,7 @@ Contact: edvgui@gmail.com
 import typing
 from collections.abc import Sequence
 
-from inmanta_plugins.git_ops import slice
+from inmanta_plugins.git_ops import slice, store
 
 
 class NamedSlice(slice.EmbeddedSliceObjectABC):
@@ -54,3 +54,10 @@ class Slice(NamedSlice, slice.SliceObjectABC):
     embedded_required: EmbeddedSlice
     embedded_optional: EmbeddedSlice | None = None
     embedded_sequence: Sequence[EmbeddedSlice] = []
+
+
+STORE = store.SliceStore(
+    name="recursive",
+    folder="inmanta:///files/recursive/",
+    schema=Slice,
+)

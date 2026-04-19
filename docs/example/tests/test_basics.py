@@ -23,5 +23,5 @@ def test_basics(project: Project) -> None:
     project.compile("import example")
 
 
-# This file has been generated using inmanta-module-factory==3.1.0
+# This file has been generated using inmanta-module-factory==3.1.1
 # <IMF-GENERATED-FILE/>

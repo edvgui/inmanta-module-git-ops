@@ -3,6 +3,7 @@
 ## v0.2.0 - ?
 
 - Allow to generate schema for slice store by using git-ops-config.yml config file
+- Add basic cli to facilitate model and schema generation
 
 ## v0.1.5 - 2026-04-01
 
