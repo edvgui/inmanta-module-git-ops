@@ -18,12 +18,12 @@ Contact: edvgui@gmail.com
 
 import pydantic
 from inmanta_plugins.config.abc import ConfigABC
-from inmanta_plugins.config.const import InmantaPath, InmantaTemplatePath
+from inmanta_plugins.config.const import InmantaPath
 
 
-class SliceConfig(pydantic.BaseModel):
+class SliceStoreConfig(pydantic.BaseModel):
     """
-    Configuration for a slice.
+    Configuration for a slice store.
     """
 
     store_name: str = pydantic.Field(
@@ -38,10 +38,23 @@ class SliceConfig(pydantic.BaseModel):
         ),
     )
 
-    parent_relation_name: InmantaTemplatePath | str = pydantic.Field(
-        default="parent",
-        description="The name of the relation to the parent entity of any embedded slice.",
-    )
+    @classmethod
+    def get_for_store(cls, store_name: str) -> "SliceStoreConfig":
+        """
+        Get the configuration for a slice type.
+        """
+        try:
+            # Try to load the config, if it doesn't exist, return a default config with the default store
+            config = GitOpsConfig.load()
+        except FileNotFoundError:
+            return SliceStoreConfig(store_name="default")
+
+        # Then try to find a config for this store, if it doesn't exist, return a default config with this store
+        for slice_config in config.slices:
+            if slice_config.store_name == store_name:
+                return slice_config
+
+        return SliceStoreConfig(store_name="default")
 
 
 class GitOpsConfig(ConfigABC):
@@ -49,9 +62,9 @@ class GitOpsConfig(ConfigABC):
     Configuration for the git-ops module.
     """
 
-    slices: list[SliceConfig] = pydantic.Field(
+    stores: list[SliceStoreConfig] = pydantic.Field(
         default_factory=list,
-        description="The slices to manage with git-ops.",
+        description="The stores to manage with git-ops.",
     )
 
     @classmethod
