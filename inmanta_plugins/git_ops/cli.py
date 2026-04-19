@@ -19,15 +19,17 @@ Contact: edvgui@gmail.com
 import importlib
 import json
 import logging
+import os
 import pathlib
+import subprocess
 
 import click
 import texttable
 
-from inmanta.module import ModuleV2
+from inmanta.module import ModuleV2, Project
+from inmanta_plugins.git_ops import const
 from inmanta_plugins.git_ops.store import SLICE_STORE_REGISTRY
 
-MODULE: ModuleV2 | None = None
 LOGGER = logging.getLogger(__name__)
 
 
@@ -42,6 +44,9 @@ def cli(log_level: str) -> None:
     Inmanta module git_ops CLI tool.
     """
     logging.basicConfig(level=log_level)
+
+
+MODULE: ModuleV2 | None = None
 
 
 @cli.group("module")
@@ -171,6 +176,39 @@ def schema(store: str) -> None:
 
     schema = SLICE_STORE_REGISTRY[store].schema
     click.echo(json.dumps(schema.model_json_schema(), indent=2))
+
+
+PROJECT: Project | None = None
+INMANTA_ARGS: list[str] = []
+
+
+@cli.group("project")
+@click.option("--inmanta-arg", multiple=True, help="Additional arguments to pass to the inmanta command.")
+def project(inmanta_arg: list[str]) -> None:
+    """
+    Commands to manage the current Inmanta project.
+    """
+    global PROJECT
+    PROJECT = Project.get()
+
+    INMANTA_ARGS.extend(inmanta_arg)
+
+
+@project.command("prune")
+@click.option("--inmanta-compile-arg", multiple=True, help="Additional arguments to pass to the inmanta compile command.")
+def prune(inmanta_compile_arg: list[str]) -> None:
+    """
+    Prune the slice store from all active slices which have a more recent version
+    or which are deleted.
+    """
+    # To figure out the stores used in the project, we need to run a compile
+    # with all stores disabled, and then check which stores are used in the model.
+    subprocess.run(
+        ["inmanta", *INMANTA_ARGS, "compile", *inmanta_compile_arg],
+        check=True,
+        env={**os.environ, "INMANTA_GIT_OPS_COMPILE_MODE": const.COMPILE_EMPTY},
+    )
+
 
 
 if __name__ == "__main__":

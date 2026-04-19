@@ -303,6 +303,11 @@ class SliceStore[S: slice.SliceObjectABC]:
         """
         if self.active_slices is not None:
             return self.active_slices
+        
+        if const.COMPILE_MODE == const.COMPILE_EMPTY:
+            # In empty compile, we want to ignore all the active slices, to make sure they are properly pruned when they should be
+            self.active_slices = {}
+            return self.active_slices
 
         self.active_slices = {
             slice: [slice_file.emit_slice(self.name) for slice_file in slice_files]
@@ -362,6 +367,11 @@ class SliceStore[S: slice.SliceObjectABC]:
         of to figure out the version.
         """
         if self.source_slices is not None:
+            return self.source_slices
+        
+        if const.COMPILE_MODE == const.COMPILE_EMPTY:
+            # In empty compile, we want to ignore all the source slices, to make sure they are properly pruned when they should be
+            self.source_slices = {}
             return self.source_slices
 
         active_slices = self.load_active_slices()
