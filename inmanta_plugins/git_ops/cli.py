@@ -18,6 +18,7 @@ Contact: edvgui@gmail.com
 
 import importlib
 import json
+import logging
 import pathlib
 
 import click
@@ -28,6 +29,7 @@ from inmanta_plugins.git_ops.generator import get_entity, get_module_builder
 from inmanta_plugins.git_ops.store import SLICE_STORE_REGISTRY
 
 MODULE: ModuleV2 | None = None
+LOGGER = logging.getLogger(__name__)
 
 
 @click.group()
@@ -40,10 +42,17 @@ MODULE: ModuleV2 | None = None
     show_default=True,
     show_envvar=True,
 )
-def cli(module_path: str) -> None:
+@click.option(
+    "--log-level",
+    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"]),
+    default="INFO",
+)
+def cli(module_path: str, log_level: str) -> None:
     """
     GitOps CLI group.
     """
+    logging.basicConfig(level=log_level)
+
     global MODULE
     MODULE = ModuleV2.from_path(module_path)
     if MODULE is None:
@@ -51,12 +60,16 @@ def cli(module_path: str) -> None:
 
     # The generator needs the module to be marked as editable
     MODULE._is_editable_install = True
+    LOGGER.debug("Found module %s at path %s", MODULE.name, MODULE._path)
 
     for file in pathlib.Path(MODULE.get_plugin_dir()).rglob("*.py"):
         # For each python file in the module, try to import it to load the slice definitions
         relative_path = file.relative_to(MODULE.get_plugin_dir())
-        module_name = relative_path.with_suffix("").as_posix().replace("/", ".")
-        importlib.import_module(f"inmanta_plugins.{MODULE.name}.{module_name}")
+        module_name = f"inmanta_plugins.{MODULE.name}." + relative_path.with_suffix(
+            ""
+        ).as_posix().replace("/", ".")
+        LOGGER.debug(f"Importing module {module_name} from {file}")
+        importlib.import_module(module_name)
 
 
 @cli.command("generate")

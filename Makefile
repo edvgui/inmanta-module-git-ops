@@ -1,13 +1,15 @@
-isort = isort inmanta_plugins tests
-black_preview = black --preview inmanta_plugins tests
-black = black inmanta_plugins tests
-flake8 = flake8 inmanta_plugins tests
-pyupgrade = pyupgrade --py312-plus $$(find inmanta_plugins tests -type f -name '*.py')
+SOURCE_DIRS = inmanta_plugins tests docs/example/inmanta_plugins
+
+isort = isort $(SOURCE_DIRS)
+black_preview = black --preview $(SOURCE_DIRS)
+black = black $(SOURCE_DIRS)
+flake8 = flake8 $(SOURCE_DIRS)
+pyupgrade = pyupgrade --py312-plus $$(find $(SOURCE_DIRS) -type f -name '*.py')
 
 format:
-	$(isort)
 	$(black_preview)
 	$(black)
+	$(isort)
 	$(flake8)
 	$(pyupgrade)
 

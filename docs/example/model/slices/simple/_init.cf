@@ -1,0 +1,47 @@
+"""
+Copyright 2025 Guillaume Everarts de Velp
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Contact: edvgui@gmail.com
+"""
+import git_ops::slice
+import std
+
+entity Slice extends git_ops::slice::SliceObjectABC:
+    """
+    Main slice.
+
+    :attr name: The name of the slice.
+    :attr description: A helpful description of the slice's function.
+    :attr unique_id: A unique identifier automatically assigned to this slice.
+    :attr some_number: An example of number field.
+    :attr some_flag: An example of boolean field.
+    :attr some_list: An example of list field.
+    :attr some_dict: An example of dict field.
+    """
+    string name
+    string? description = null
+    int? unique_id = null
+    float some_number
+    bool some_flag
+    string[] some_list
+    dict some_dict
+end
+
+index Slice(name)
+
+implement Slice using std::none, parents
+
+# This file has been generated using inmanta-module-factory==3.1.1
+# <IMF-GENERATED-FILE/>

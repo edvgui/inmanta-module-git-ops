@@ -16,6 +16,7 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 
+import json
 import os
 import pathlib
 import subprocess
@@ -24,16 +25,17 @@ import subprocess
 def test_basics() -> None:
     example_path = pathlib.Path(__file__).parent.parent / "docs/example"
 
+    # List stores
+    stores = subprocess.check_output(
+        ["git-ops", "--log-level=DEBUG", "store", "list", "--format", "json"],
+        env={"INMANTA_GIT_OPS_MODULE_PATH": str(example_path), **os.environ},
+        text=True,
+    )
+    assert len(json.loads(stores)) == 3
+
     # Test generation of the model
     subprocess.run(
         ["git-ops", "generate"],
-        check=True,
-        env={"INMANTA_GIT_OPS_MODULE_PATH": str(example_path), **os.environ},
-    )
-
-    # List stores
-    subprocess.run(
-        ["git-ops", "store", "list"],
         check=True,
         env={"INMANTA_GIT_OPS_MODULE_PATH": str(example_path), **os.environ},
     )
