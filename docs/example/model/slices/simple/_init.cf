@@ -43,5 +43,5 @@ index Slice(name)
 
 implement Slice using std::none, parents
 
-# This file has been generated using inmanta-module-factory==3.1.0
+# This file has been generated using inmanta-module-factory==3.1.1
 # <IMF-GENERATED-FILE/>
