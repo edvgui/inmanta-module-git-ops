@@ -18,7 +18,7 @@ Contact: edvgui@gmail.com
 
 import pydantic
 from inmanta_plugins.config.abc import ConfigABC
-from inmanta_plugins.config.const import InmantaPath
+from inmanta_plugins.config.const import InmantaPath, SystemPath
 
 
 class SliceStoreConfig(pydantic.BaseModel):
@@ -30,7 +30,7 @@ class SliceStoreConfig(pydantic.BaseModel):
         description="The name of the store to use for this slice.",
     )
 
-    schema_path: InmantaPath | None = pydantic.Field(
+    schema_path: InmantaPath | SystemPath | None = pydantic.Field(
         default=None,
         description=(
             "The path to the schema file for this slice.  "
@@ -50,9 +50,9 @@ class SliceStoreConfig(pydantic.BaseModel):
             return SliceStoreConfig(store_name="default")
 
         # Then try to find a config for this store, if it doesn't exist, return a default config with this store
-        for slice_config in config.slices:
-            if slice_config.store_name == store_name:
-                return slice_config
+        for store_config in config.stores:
+            if store_config.store_name == store_name:
+                return store_config
 
         return SliceStoreConfig(store_name="default")
 

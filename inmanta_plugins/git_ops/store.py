@@ -590,6 +590,7 @@ class SliceStore[S: slice.SliceObjectABC]:
         schema_path = config.SliceStoreConfig.get_for_store(self.name).schema_path
         if schema_path is not None:
             schema_path = pathlib.Path(resolve_path(schema_path))
+            schema_path.parent.mkdir(parents=True, exist_ok=True)
             schema_path.write_text(
                 json.dumps(self.schema.model_json_schema(), indent=2)
             )
