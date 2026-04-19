@@ -25,7 +25,7 @@ entity EmbeddedSlice extends NamedSlice:
     int? unique_id = null
 end
 
-EmbeddedSlice.recursive_slice [0:] -- EmbeddedSliceRecursiveSlice.parent [1]
+EmbeddedSlice.recursive_slice [0:] -- EmbeddedSliceRecursiveSlice.embedded_slice [1]
 """
 Peer relation: Relation to parent
 """
@@ -40,11 +40,11 @@ entity EmbeddedSliceRecursiveSlice extends EmbeddedSlice:
     have a relation to this base entity, making it impossible
     to define a unique parent relation.
 
-    :rel parent: Relation to parent
+    :rel embedded_slice: Relation to parent
     """
 end
 
-index EmbeddedSliceRecursiveSlice(parent, name)
+index EmbeddedSliceRecursiveSlice(embedded_slice, name)
 
 entity NamedSlice extends git_ops::slice::EmbeddedSliceObjectABC:
     """
@@ -61,17 +61,17 @@ entity Slice extends NamedSlice, git_ops::slice::SliceObjectABC:
     int? unique_id = null
 end
 
-Slice.embedded_optional [0:1] -- SliceEmbeddedOptional.parent [1]
+Slice.embedded_optional [0:1] -- SliceEmbeddedOptional.slice [1]
 """
 Peer relation: Relation to parent
 """
 
-Slice.embedded_required [1] -- SliceEmbeddedRequired.parent [1]
+Slice.embedded_required [1] -- SliceEmbeddedRequired.slice [1]
 """
 Peer relation: Relation to parent
 """
 
-Slice.embedded_sequence [0:] -- SliceEmbeddedSequence.parent [1]
+Slice.embedded_sequence [0:] -- SliceEmbeddedSequence.slice [1]
 """
 Peer relation: Relation to parent
 """
@@ -88,11 +88,11 @@ entity SliceEmbeddedOptional extends EmbeddedSlice:
     have a relation to this base entity, making it impossible
     to define a unique parent relation.
 
-    :rel parent: Relation to parent
+    :rel slice: Relation to parent
     """
 end
 
-index SliceEmbeddedOptional(parent, name)
+index SliceEmbeddedOptional(slice, name)
 
 entity SliceEmbeddedRequired extends EmbeddedSlice:
     """
@@ -104,11 +104,11 @@ entity SliceEmbeddedRequired extends EmbeddedSlice:
     have a relation to this base entity, making it impossible
     to define a unique parent relation.
 
-    :rel parent: Relation to parent
+    :rel slice: Relation to parent
     """
 end
 
-index SliceEmbeddedRequired(parent, name)
+index SliceEmbeddedRequired(slice, name)
 
 entity SliceEmbeddedSequence extends EmbeddedSlice:
     """
@@ -120,11 +120,11 @@ entity SliceEmbeddedSequence extends EmbeddedSlice:
     have a relation to this base entity, making it impossible
     to define a unique parent relation.
 
-    :rel parent: Relation to parent
+    :rel slice: Relation to parent
     """
 end
 
-index SliceEmbeddedSequence(parent, name)
+index SliceEmbeddedSequence(slice, name)
 
 implement EmbeddedSlice using std::none, parents
 

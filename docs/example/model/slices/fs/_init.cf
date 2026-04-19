@@ -24,13 +24,13 @@ entity File extends PathABC:
 
     :attr content: The textual content of the file.
     :attr previous_content: The previous desired content of the file.
-    :rel parent: Relation to parent
+    :rel folder: Relation to parent
     """
     string content
     string? previous_content = null
 end
 
-index File(parent, name)
+index File(folder, name)
 
 entity Folder extends PathABC:
     """
@@ -41,13 +41,13 @@ entity Folder extends PathABC:
     """
 end
 
-Folder.directories [0:] -- FolderDirectories.parent [1]
+Folder.directories [0:] -- FolderDirectories.folder [1]
 """
 A list of folder to manage within this folder.
 Peer relation: Relation to parent
 """
 
-Folder.files [0:] -- File.parent [1]
+Folder.files [0:] -- File.folder [1]
 """
 A list of files to manage in the folder.
 Peer relation: Relation to parent
@@ -63,11 +63,11 @@ entity FolderDirectories extends Folder:
     have a relation to this base entity, making it impossible
     to define a unique parent relation.
 
-    :rel parent: Relation to parent
+    :rel folder: Relation to parent
     """
 end
 
-index FolderDirectories(parent, name)
+index FolderDirectories(folder, name)
 
 entity PathABC extends git_ops::slice::EmbeddedSliceObjectABC:
     """
@@ -97,7 +97,7 @@ entity RootFolder extends git_ops::slice::SliceObjectABC, Folder:
     string root
 end
 
-index RootFolder(root, name)
+index RootFolder(name, root)
 
 implement File using std::none, parents
 

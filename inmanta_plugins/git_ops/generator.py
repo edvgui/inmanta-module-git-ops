@@ -60,6 +60,12 @@ from inmanta_plugins.git_ops import slice
 ENTITIES: dict[Sequence[str], Entity] = {}
 
 
+# Define some configuration options for the generator
+# When true, the generator will use as parent relation name the name
+# of the parent entity, instead of "parent".
+EXPLICIT_PARENT_RELATIONS: bool = False
+
+
 @functools.lru_cache
 def get_module(module: str) -> Module:
     """
@@ -202,7 +208,11 @@ def get_relation(
     builder = get_module_builder(schema.entity.path[0])
 
     parent_relation = EntityRelation(
-        name="parent",
+        name=(
+            utils.inmanta_safe_name(utils.camel_case_to_snake_case(parent.name))
+            if EXPLICIT_PARENT_RELATIONS
+            else "parent"
+        ),
         path=schema.entity.path,
         cardinality=(1, 1),
         description="Relation to parent",

@@ -25,7 +25,6 @@ import click
 import texttable
 
 from inmanta.module import ModuleV2
-from inmanta_plugins.git_ops.generator import get_entity, get_module_builder
 from inmanta_plugins.git_ops.store import SLICE_STORE_REGISTRY
 
 MODULE: ModuleV2 | None = None
@@ -73,16 +72,29 @@ def cli(module_path: str, log_level: str) -> None:
 
 
 @cli.command("generate")
-def generate() -> None:
+@click.option(
+    "--explicit-parent-relations",
+    is_flag=True,
+    help="Whether to generate explicit parent relations in the model.",
+    envvar="INMANTA_GIT_OPS_EXPLICIT_PARENT_RELATIONS",
+    default=False,
+    show_envvar=True,
+)
+def generate(explicit_parent_relations: bool) -> None:
     """
     Generate the model for the slices defined in the input module.
     """
+    from inmanta_plugins.git_ops import generator
+
+    if explicit_parent_relations:
+        generator.EXPLICIT_PARENT_RELATIONS = True
+
     assert MODULE is not None
-    builder = get_module_builder(MODULE.name)
+    builder = generator.get_module_builder(MODULE.name)
 
     # Collect the schema for all registered slice stores and generate the corresponding entities
     slices = [store.schema.entity_schema() for store in SLICE_STORE_REGISTRY.values()]
-    [get_entity(s, slice_root=True) for s in slices]
+    [generator.get_entity(s, slice_root=True) for s in slices]
 
     builder.upgrade_existing_module(MODULE, fix_linting=False)
 
