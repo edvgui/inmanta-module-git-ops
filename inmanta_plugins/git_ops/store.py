@@ -33,7 +33,7 @@ from inmanta_plugins.config.const import InmantaPath, SystemPath
 from inmanta.compiler import finalizer
 from inmanta.execute.proxy import SequenceProxy
 from inmanta.util import dict_path
-from inmanta_plugins.git_ops import Slice, const, get_parent_path, slice
+from inmanta_plugins.git_ops import Slice, config, const, get_parent_path, slice
 
 # Dict registering all the slice stores when they are being created
 # This allows to find the store back, to access its slices.
@@ -577,7 +577,8 @@ class SliceStore[S: slice.SliceObjectABC]:
 
     def update(self) -> None:
         """
-        Save all the source slices in the store back to file.
+        Save all the source slices in the store back to file.  If a schema
+        path is provided for this store config, also update the schema file.
         """
         if self.source_slices is None:
             return
@@ -585,6 +586,14 @@ class SliceStore[S: slice.SliceObjectABC]:
         for slice_file in self.load_source_slice_files().values():
             slice = self.source_slices[slice_file.name]
             slice_file.write(slice.attributes)
+
+        schema_path = config.SliceStoreConfig.get_for_store(self.name).schema_path
+        if schema_path is not None:
+            schema_path = pathlib.Path(resolve_path(schema_path))
+            schema_path.parent.mkdir(parents=True, exist_ok=True)
+            schema_path.write_text(
+                json.dumps(self.schema.model_json_schema(), indent=2)
+            )
 
     def clear(self) -> None:
         """

@@ -25,7 +25,7 @@ import yaml
 from inmanta_plugins.example.slices.recursive import EmbeddedSlice, Slice
 from pytest_inmanta.plugin import Project
 
-from inmanta_plugins.git_ops import const
+from inmanta_plugins.git_ops import config, const
 from inmanta_plugins.git_ops.store import SliceStore
 
 
@@ -92,6 +92,31 @@ def test_unroll_slices(
     with monkeypatch.context() as ctx:
         ctx.setattr(const, "COMPILE_MODE", const.COMPILE_UPDATE)
         project.compile(model, no_dedent=False)
+
+    # Compile with default store config, no schema should be created
+    schema_path = tmp_path / "schema" / "test.json"
+    assert not schema_path.exists()
+
+    # Add config that includes a schema path, compile should create the schema file with the correct content
+    conf = config.GitOpsConfig(
+        stores=[
+            config.SliceStoreConfig(
+                store_name="test",
+                schema_path="file://" + str(schema_path),
+            )
+        ]
+    )
+    conf.path().parent.mkdir(parents=True, exist_ok=True)
+    conf.save()
+
+    # Empty store should work just fine
+    with monkeypatch.context() as ctx:
+        ctx.setattr(const, "COMPILE_MODE", const.COMPILE_UPDATE)
+        project.compile(model, no_dedent=False)
+
+    # Validate that the schema file has been created with the correct content
+    assert schema_path.exists()
+    assert json.loads(schema_path.read_text()) == Slice.model_json_schema()
 
     # Add some one slice to the folder
     s1_obj = Slice(

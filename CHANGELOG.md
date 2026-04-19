@@ -1,7 +1,8 @@
 # Changelog
 
-## v0.1.6 - ?
+## v0.2.0 - ?
 
+- Allow to generate schema for slice store by using git-ops-config.yml config file
 
 ## v0.1.5 - 2026-04-01
 
