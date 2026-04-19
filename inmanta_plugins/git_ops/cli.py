@@ -33,6 +33,19 @@ LOGGER = logging.getLogger(__name__)
 
 @click.group()
 @click.option(
+    "--log-level",
+    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"]),
+    default="INFO",
+)
+def cli(log_level: str) -> None:
+    """
+    Inmanta module git_ops CLI tool.
+    """
+    logging.basicConfig(level=log_level)
+
+
+@cli.group("module")
+@click.option(
     "--module-path",
     type=click.Path(exists=True, file_okay=False),
     help="Path to the module to operate on.",
@@ -41,16 +54,10 @@ LOGGER = logging.getLogger(__name__)
     show_default=True,
     show_envvar=True,
 )
-@click.option(
-    "--log-level",
-    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"]),
-    default="INFO",
-)
-def cli(module_path: str, log_level: str) -> None:
+def module(module_path: str, ) -> None:
     """
-    GitOps CLI group.
+    Commands to manage the module containing slice definitions.
     """
-    logging.basicConfig(level=log_level)
 
     global MODULE
     MODULE = ModuleV2.from_path(module_path)
@@ -71,7 +78,7 @@ def cli(module_path: str, log_level: str) -> None:
         importlib.import_module(module_name)
 
 
-@cli.command("generate")
+@module.command("generate")
 @click.option(
     "--explicit-parent-relations",
     is_flag=True,
@@ -99,7 +106,7 @@ def generate(explicit_parent_relations: bool) -> None:
     builder.upgrade_existing_module(MODULE, fix_linting=False)
 
 
-@cli.group("store")
+@module.group("store")
 def store() -> None:
     """
     Commands to manage slice stores.

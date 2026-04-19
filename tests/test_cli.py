@@ -27,7 +27,7 @@ def test_basics() -> None:
 
     # List stores
     stores = subprocess.check_output(
-        ["git-ops", "--log-level=DEBUG", "store", "list", "--format", "json"],
+        ["git-ops", "module", "store", "list", "--format", "json"],
         env={"INMANTA_GIT_OPS_MODULE_PATH": str(example_path), **os.environ},
         text=True,
     )
@@ -35,14 +35,14 @@ def test_basics() -> None:
 
     # Test generation of the model
     subprocess.run(
-        ["git-ops", "generate", "--explicit-parent-relations"],
+        ["git-ops", "module", "generate", "--explicit-parent-relations"],
         check=True,
         env={"INMANTA_GIT_OPS_MODULE_PATH": str(example_path), **os.environ},
     )
 
     # Generate openapi definitions
     subprocess.run(
-        ["git-ops", "store", "schema", "--store", "fs"],
+        ["git-ops", "module", "store", "schema", "--store", "fs"],
         check=True,
         env={"INMANTA_GIT_OPS_MODULE_PATH": str(example_path), **os.environ},
     )
