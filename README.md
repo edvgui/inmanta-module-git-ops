@@ -16,6 +16,28 @@ All of this is already natively supported by the orchestrator by modifying the `
 
 More details about the design in the [docs](docs/) folder.
 
+## Cli
+
+This module also provides a cli interface, to facilitate the creation of a module based on git_ops and the management of a project using git_ops.
+
+If the module is installed in your venv, just run the `git-ops` command.
+
+```console
+$ git-ops --help
+Usage: git-ops [OPTIONS] COMMAND [ARGS]...
+
+  Inmanta module git_ops CLI tool.
+
+Options:
+  --log-level [DEBUG|INFO|WARNING|ERROR]
+  --help                          Show this message and exit.
+
+Commands:
+  module   Commands to manage the module containing slice definitions.
+  project  Commands to manage the current Inmanta project.
+```
+
+
 ## Running tests
 
 1. Set up a new virtual environment, then install the module in it. The first line assumes you have ``virtualenvwrapper``
