@@ -587,16 +587,14 @@ class SliceStore[S: slice.SliceObjectABC]:
                 schema=self.schema,
             )
             slice_file.write(slice.attributes)
-    
+
     def prune(self) -> None:
         """
         Remove all the slices from the store that are not in use.
         These are the slices which have a more recent version, or which are deleted.
         """
         if const.COMPILE_MODE != const.COMPILE_PRUNE:
-            raise RuntimeError(
-                "Slices can only be pruned during a prune compile"
-            )
+            raise RuntimeError("Slices can only be pruned during a prune compile")
 
         active_slice_files = self.load_active_slice_files()
         for slice_files in active_slice_files.values():

@@ -59,7 +59,9 @@ MODULE: ModuleV2 | None = None
     show_default=True,
     show_envvar=True,
 )
-def module(module_path: str, ) -> None:
+def module(
+    module_path: str,
+) -> None:
     """
     Commands to manage the module containing slice definitions.
     """
@@ -183,7 +185,11 @@ INMANTA_ARGS: list[str] = []
 
 
 @cli.group("project")
-@click.option("--inmanta-arg", multiple=True, help="Additional arguments to pass to the inmanta command.")
+@click.option(
+    "--inmanta-arg",
+    multiple=True,
+    help="Additional arguments to pass to the inmanta command.",
+)
 def project(inmanta_arg: list[str]) -> None:
     """
     Commands to manage the current Inmanta project.
@@ -195,14 +201,18 @@ def project(inmanta_arg: list[str]) -> None:
 
 
 @project.command("update")
-@click.option("--inmanta-compile-arg", multiple=True, help="Additional arguments to pass to the inmanta compile command.")
+@click.option(
+    "--inmanta-compile-arg",
+    multiple=True,
+    help="Additional arguments to pass to the inmanta compile command.",
+)
 def update(inmanta_compile_arg: list[str]) -> None:
     """
-    Update the slice store with all active slices which have a more recent version
-    or which are deleted.
+    Update the slice store.
+
+    Read each source slice, and update their content if processors need to resolve some values.
+    Verify that the input data is correct, don't export any resource to the orchestrator.
     """
-    # To figure out the stores used in the project, we need to run a compile
-    # with all stores disabled, and then check which stores are used in the model.
     subprocess.run(
         ["inmanta", *INMANTA_ARGS, "compile", *inmanta_compile_arg],
         check=True,
@@ -211,14 +221,19 @@ def update(inmanta_compile_arg: list[str]) -> None:
 
 
 @project.command("sync")
-@click.option("--inmanta-compile-arg", multiple=True, help="Additional arguments to pass to the inmanta compile command.")
+@click.option(
+    "--inmanta-compile-arg",
+    multiple=True,
+    help="Additional arguments to pass to the inmanta compile command.",
+)
 def sync(inmanta_compile_arg: list[str]) -> None:
     """
-    Sync the slice store with all active slices which have a more recent version
-    or which are deleted.
+    Commit the source slices.
+
+    Read each source slice, and if they have a more recent version or are deleted, update the slice store accordingly
+    by emitting a newer version of the slice or marking it as deleted.  This will make sure the slice store is in sync
+    with the source slices, and that the orchestrator will receive the expected resources when doing the next export.
     """
-    # To figure out the stores used in the project, we need to run a compile
-    # with all stores disabled, and then check which stores are used in the model.
     subprocess.run(
         ["inmanta", *INMANTA_ARGS, "compile", *inmanta_compile_arg],
         check=True,
@@ -227,20 +242,23 @@ def sync(inmanta_compile_arg: list[str]) -> None:
 
 
 @project.command("prune")
-@click.option("--inmanta-compile-arg", multiple=True, help="Additional arguments to pass to the inmanta compile command.")
+@click.option(
+    "--inmanta-compile-arg",
+    multiple=True,
+    help="Additional arguments to pass to the inmanta compile command.",
+)
 def prune(inmanta_compile_arg: list[str]) -> None:
     """
-    Prune the slice store from all active slices which have a more recent version
+    Prune the slice store.
+
+    Remove from the slice store all active slices which have a more recent version
     or which are deleted.
     """
-    # To figure out the stores used in the project, we need to run a compile
-    # with all stores disabled, and then check which stores are used in the model.
     subprocess.run(
         ["inmanta", *INMANTA_ARGS, "compile", *inmanta_compile_arg],
         check=True,
         env={**os.environ, "INMANTA_GIT_OPS_COMPILE_MODE": const.COMPILE_PRUNE},
     )
-
 
 
 if __name__ == "__main__":
