@@ -22,6 +22,7 @@ import logging
 import os
 import pathlib
 import subprocess
+import sys
 
 import click
 import texttable
@@ -208,13 +209,20 @@ def project(inmanta_arg: list[str]) -> None:
 )
 def update(inmanta_compile_arg: list[str]) -> None:
     """
-    Update the slice store.
+    Update the source slices.
 
     Read each source slice, and update their content if processors need to resolve some values.
     Verify that the input data is correct, don't export any resource to the orchestrator.
     """
     subprocess.run(
-        ["inmanta", *INMANTA_ARGS, "compile", *inmanta_compile_arg],
+        [
+            sys.executable,
+            "-m",
+            "inmanta.app",
+            *INMANTA_ARGS,
+            "compile",
+            *inmanta_compile_arg,
+        ],
         check=True,
         env={**os.environ, "INMANTA_GIT_OPS_COMPILE_MODE": const.COMPILE_UPDATE},
     )
@@ -235,7 +243,14 @@ def sync(inmanta_compile_arg: list[str]) -> None:
     with the source slices, and that the orchestrator will receive the expected resources when doing the next export.
     """
     subprocess.run(
-        ["inmanta", *INMANTA_ARGS, "compile", *inmanta_compile_arg],
+        [
+            sys.executable,
+            "-m",
+            "inmanta.app",
+            *INMANTA_ARGS,
+            "compile",
+            *inmanta_compile_arg,
+        ],
         check=True,
         env={**os.environ, "INMANTA_GIT_OPS_COMPILE_MODE": const.COMPILE_SYNC},
     )
@@ -255,7 +270,14 @@ def prune(inmanta_compile_arg: list[str]) -> None:
     or which are deleted.
     """
     subprocess.run(
-        ["inmanta", *INMANTA_ARGS, "compile", *inmanta_compile_arg],
+        [
+            sys.executable,
+            "-m",
+            "inmanta.app",
+            *INMANTA_ARGS,
+            "compile",
+            *inmanta_compile_arg,
+        ],
         check=True,
         env={**os.environ, "INMANTA_GIT_OPS_COMPILE_MODE": const.COMPILE_PRUNE},
     )
