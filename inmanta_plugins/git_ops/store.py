@@ -113,6 +113,13 @@ class SliceFile[S: slice.SliceObjectABC]:
 
         raise ValueError(f"Unsupported slice file extension: {self.extension}")
 
+    def delete(self) -> None:
+        """
+        Delete the slice file from the filesystem.  If the file doesn't exist, do nothing.
+        """
+        if self.path.exists():
+            self.path.unlink()
+
     def with_version(self, version: int) -> "SliceFile":
         """
         Emit another slice file that is a copy of this one but with another
@@ -303,11 +310,6 @@ class SliceStore[S: slice.SliceObjectABC]:
         """
         if self.active_slices is not None:
             return self.active_slices
-        
-        if const.COMPILE_MODE == const.COMPILE_EMPTY:
-            # In empty compile, we want to ignore all the active slices, to make sure they are properly pruned when they should be
-            self.active_slices = {}
-            return self.active_slices
 
         self.active_slices = {
             slice: [slice_file.emit_slice(self.name) for slice_file in slice_files]
@@ -367,11 +369,6 @@ class SliceStore[S: slice.SliceObjectABC]:
         of to figure out the version.
         """
         if self.source_slices is not None:
-            return self.source_slices
-        
-        if const.COMPILE_MODE == const.COMPILE_EMPTY:
-            # In empty compile, we want to ignore all the source slices, to make sure they are properly pruned when they should be
-            self.source_slices = {}
             return self.source_slices
 
         active_slices = self.load_active_slices()
@@ -506,6 +503,12 @@ class SliceStore[S: slice.SliceObjectABC]:
         if self.slices is not None:
             return self.slices
 
+        if const.COMPILE_MODE == const.COMPILE_PRUNE:
+            # In prune compile, we want to ignore all the slices, we just want to
+            # delete the unused ones
+            self.slices = {}
+            return self.slices
+
         previous_slices = self.load_previous_slices()
 
         self.slices: dict[str, Slice] = {}
@@ -584,6 +587,28 @@ class SliceStore[S: slice.SliceObjectABC]:
                 schema=self.schema,
             )
             slice_file.write(slice.attributes)
+    
+    def prune(self) -> None:
+        """
+        Remove all the slices from the store that are not in use.
+        These are the slices which have a more recent version, or which are deleted.
+        """
+        if const.COMPILE_MODE != const.COMPILE_PRUNE:
+            raise RuntimeError(
+                "Slices can only be pruned during a prune compile"
+            )
+
+        active_slice_files = self.load_active_slice_files()
+        for slice_files in active_slice_files.values():
+            latest_slice_file = max(slice_files, key=lambda s: s.version or 0)
+            for slice_file in slice_files:
+                if slice_file != latest_slice_file:
+                    # This slice file is not the latest version, it should be pruned
+                    slice_file.delete()
+
+            if latest_slice_file.read() == {}:
+                # The latest slice file is deleted, it should be pruned too
+                latest_slice_file.delete()
 
     def update(self) -> None:
         """
@@ -783,6 +808,8 @@ def persist_store() -> None:
             store.update()
         elif const.COMPILE_MODE == const.COMPILE_SYNC:
             store.sync()
+        elif const.COMPILE_MODE == const.COMPILE_PRUNE:
+            store.prune()
         else:
             pass
         store.clear()

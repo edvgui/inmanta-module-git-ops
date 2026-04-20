@@ -25,7 +25,7 @@ from dataclasses import asdict, dataclass
 from inmanta.plugins import Plugin, plugin
 from inmanta.util import dict_path
 
-type CompileMode = typing.Literal["update", "sync", "export", "empty"]
+type CompileMode = typing.Literal["update", "sync", "export", "prune"]
 
 
 @dataclass(frozen=True, kw_only=True)

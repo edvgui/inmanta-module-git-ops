@@ -194,6 +194,38 @@ def project(inmanta_arg: list[str]) -> None:
     INMANTA_ARGS.extend(inmanta_arg)
 
 
+@project.command("update")
+@click.option("--inmanta-compile-arg", multiple=True, help="Additional arguments to pass to the inmanta compile command.")
+def update(inmanta_compile_arg: list[str]) -> None:
+    """
+    Update the slice store with all active slices which have a more recent version
+    or which are deleted.
+    """
+    # To figure out the stores used in the project, we need to run a compile
+    # with all stores disabled, and then check which stores are used in the model.
+    subprocess.run(
+        ["inmanta", *INMANTA_ARGS, "compile", *inmanta_compile_arg],
+        check=True,
+        env={**os.environ, "INMANTA_GIT_OPS_COMPILE_MODE": const.COMPILE_UPDATE},
+    )
+
+
+@project.command("sync")
+@click.option("--inmanta-compile-arg", multiple=True, help="Additional arguments to pass to the inmanta compile command.")
+def sync(inmanta_compile_arg: list[str]) -> None:
+    """
+    Sync the slice store with all active slices which have a more recent version
+    or which are deleted.
+    """
+    # To figure out the stores used in the project, we need to run a compile
+    # with all stores disabled, and then check which stores are used in the model.
+    subprocess.run(
+        ["inmanta", *INMANTA_ARGS, "compile", *inmanta_compile_arg],
+        check=True,
+        env={**os.environ, "INMANTA_GIT_OPS_COMPILE_MODE": const.COMPILE_SYNC},
+    )
+
+
 @project.command("prune")
 @click.option("--inmanta-compile-arg", multiple=True, help="Additional arguments to pass to the inmanta compile command.")
 def prune(inmanta_compile_arg: list[str]) -> None:
@@ -206,7 +238,7 @@ def prune(inmanta_compile_arg: list[str]) -> None:
     subprocess.run(
         ["inmanta", *INMANTA_ARGS, "compile", *inmanta_compile_arg],
         check=True,
-        env={**os.environ, "INMANTA_GIT_OPS_COMPILE_MODE": const.COMPILE_EMPTY},
+        env={**os.environ, "INMANTA_GIT_OPS_COMPILE_MODE": const.COMPILE_PRUNE},
     )
 
 

@@ -25,7 +25,7 @@ from inmanta_plugins.git_ops import CompileMode
 COMPILE_UPDATE = "update"
 COMPILE_SYNC = "sync"
 COMPILE_EXPORT = "export"
-COMPILE_EMPTY = "empty"
+COMPILE_PRUNE = "prune"
 
 COMPILE_MODE_ENV_VAR = "INMANTA_GIT_OPS_COMPILE_MODE"
 COMPILE_MODE_ADAPTER = pydantic.TypeAdapter(CompileMode)
