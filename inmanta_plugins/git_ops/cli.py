@@ -19,19 +19,38 @@ Contact: edvgui@gmail.com
 import importlib
 import json
 import logging
+import os
 import pathlib
+import subprocess
+import sys
 
 import click
 import texttable
 
-from inmanta.module import ModuleV2
+from inmanta.module import ModuleV2, Project
+from inmanta_plugins.git_ops import const
 from inmanta_plugins.git_ops.store import SLICE_STORE_REGISTRY
 
-MODULE: ModuleV2 | None = None
 LOGGER = logging.getLogger(__name__)
 
 
 @click.group()
+@click.option(
+    "--log-level",
+    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"]),
+    default="INFO",
+)
+def cli(log_level: str) -> None:
+    """
+    Inmanta module git_ops CLI tool.
+    """
+    logging.basicConfig(level=log_level)
+
+
+MODULE: ModuleV2 | None = None
+
+
+@cli.group("module")
 @click.option(
     "--module-path",
     type=click.Path(exists=True, file_okay=False),
@@ -41,16 +60,12 @@ LOGGER = logging.getLogger(__name__)
     show_default=True,
     show_envvar=True,
 )
-@click.option(
-    "--log-level",
-    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"]),
-    default="INFO",
-)
-def cli(module_path: str, log_level: str) -> None:
+def module(
+    module_path: str,
+) -> None:
     """
-    GitOps CLI group.
+    Commands to manage the module containing slice definitions.
     """
-    logging.basicConfig(level=log_level)
 
     global MODULE
     MODULE = ModuleV2.from_path(module_path)
@@ -71,7 +86,7 @@ def cli(module_path: str, log_level: str) -> None:
         importlib.import_module(module_name)
 
 
-@cli.command("generate")
+@module.command("generate")
 @click.option(
     "--explicit-parent-relations",
     is_flag=True,
@@ -99,7 +114,7 @@ def generate(explicit_parent_relations: bool) -> None:
     builder.upgrade_existing_module(MODULE, fix_linting=False)
 
 
-@cli.group("store")
+@module.group("store")
 def store() -> None:
     """
     Commands to manage slice stores.
@@ -164,6 +179,108 @@ def schema(store: str) -> None:
 
     schema = SLICE_STORE_REGISTRY[store].schema
     click.echo(json.dumps(schema.model_json_schema(), indent=2))
+
+
+PROJECT: Project | None = None
+INMANTA_ARGS: list[str] = []
+
+
+@cli.group("project")
+@click.option(
+    "--inmanta-arg",
+    multiple=True,
+    help="Additional arguments to pass to the inmanta command.",
+)
+def project(inmanta_arg: list[str]) -> None:
+    """
+    Commands to manage the current Inmanta project.
+    """
+    global PROJECT
+    PROJECT = Project.get()
+
+    INMANTA_ARGS.extend(inmanta_arg)
+
+
+@project.command("update")
+@click.option(
+    "--inmanta-compile-arg",
+    multiple=True,
+    help="Additional arguments to pass to the inmanta compile command.",
+)
+def update(inmanta_compile_arg: list[str]) -> None:
+    """
+    Update the source slices.
+
+    Read each source slice, and update their content if processors need to resolve some values.
+    Verify that the input data is correct, don't export any resource to the orchestrator.
+    """
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "inmanta.app",
+            *INMANTA_ARGS,
+            "compile",
+            *inmanta_compile_arg,
+        ],
+        check=True,
+        env={**os.environ, "INMANTA_GIT_OPS_COMPILE_MODE": const.COMPILE_UPDATE},
+    )
+
+
+@project.command("sync")
+@click.option(
+    "--inmanta-compile-arg",
+    multiple=True,
+    help="Additional arguments to pass to the inmanta compile command.",
+)
+def sync(inmanta_compile_arg: list[str]) -> None:
+    """
+    Commit the source slices.
+
+    Read each source slice, and if they have a more recent version or are deleted, update the slice store accordingly
+    by emitting a newer version of the slice or marking it as deleted.  This will make sure the slice store is in sync
+    with the source slices, and that the orchestrator will receive the expected resources when doing the next export.
+    """
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "inmanta.app",
+            *INMANTA_ARGS,
+            "compile",
+            *inmanta_compile_arg,
+        ],
+        check=True,
+        env={**os.environ, "INMANTA_GIT_OPS_COMPILE_MODE": const.COMPILE_SYNC},
+    )
+
+
+@project.command("prune")
+@click.option(
+    "--inmanta-compile-arg",
+    multiple=True,
+    help="Additional arguments to pass to the inmanta compile command.",
+)
+def prune(inmanta_compile_arg: list[str]) -> None:
+    """
+    Prune the slice store.
+
+    Remove from the slice store all active slices which have a more recent version
+    or which are deleted.
+    """
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "inmanta.app",
+            *INMANTA_ARGS,
+            "compile",
+            *inmanta_compile_arg,
+        ],
+        check=True,
+        env={**os.environ, "INMANTA_GIT_OPS_COMPILE_MODE": const.COMPILE_PRUNE},
+    )
 
 
 if __name__ == "__main__":

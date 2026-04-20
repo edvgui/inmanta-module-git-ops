@@ -69,4 +69,4 @@ class GitOpsConfig(ConfigABC):
 
     @classmethod
     def raw_config_path(cls) -> str:
-        return "inmanta:///files/git-ops-config.yaml"
+        return "inmanta:///files/git-ops-config.yml"
