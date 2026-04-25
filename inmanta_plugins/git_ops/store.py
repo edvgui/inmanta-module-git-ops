@@ -17,6 +17,7 @@ Contact: edvgui@gmail.com
 """
 
 import collections
+import itertools
 import json
 import logging
 import pathlib
@@ -699,8 +700,9 @@ class SliceStore[S: slice.SliceObjectABC]:
 
         # First try to apply the migration to all the slices, to make sure it works on all of them, before writing
         # any change to file.  This way we avoid leaving the store in a broken state if the migration fails halfway through.
-        slice_files = (
-            self.load_source_slice_files().values() | self.load_active_slices().values()
+        slice_files: list[SliceFile] = itertools.chain(
+            self.load_source_slice_files().values(),
+            *self.load_active_slice_files().values(),
         )
         updated_slices: list[tuple[SliceFile, dict]] = []
         for slice_file in slice_files:
@@ -750,7 +752,9 @@ class SliceStore[S: slice.SliceObjectABC]:
 
         if pending and const.COMPILE_MODE != const.COMPILE_UPDATE:
             raise RuntimeError(
-                f"Migrations can only be applied during an update compile, but the current compile mode is {const.COMPILE_MODE}"
+                "Migrations can only be applied during an update compile, but the current "
+                f"compile mode is {const.COMPILE_MODE} and some pending migrations are detected "
+                f"for store {self.name}: {pending}"
             )
 
         for migration_name in self.pending_migrations():
@@ -763,7 +767,8 @@ class SliceStore[S: slice.SliceObjectABC]:
         """
         if const.COMPILE_MODE != const.COMPILE_SYNC:
             raise RuntimeError(
-                "Source slices can only be activated during an activating compile"
+                "Source slices can only be activated during an activating compile, "
+                f"but the current compile mode is {const.COMPILE_MODE}"
             )
 
         if self.source_slices is None:
@@ -812,7 +817,7 @@ class SliceStore[S: slice.SliceObjectABC]:
                     # This slice file is not the latest version, it should be pruned
                     slice_file.delete()
 
-            if latest_slice_file.read() == {}:
+            if latest_slice_file.read_raw() == {}:
                 # The latest slice file is deleted, it should be pruned too
                 latest_slice_file.delete()
 
