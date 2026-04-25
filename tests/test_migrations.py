@@ -35,14 +35,14 @@ def test_migrations(
 ) -> None:
     # Define a basic store
     store = SliceStore(
-        name="test",
+        name="test_migrations",
         folder="file://" + str(tmp_path / "test"),
         schema=Slice,
     )
 
     model = """
         import git_ops
-        git_ops::unroll_slices("test")
+        git_ops::unroll_slices("test_migrations")
     """
 
     # Basic compile should always be fine
