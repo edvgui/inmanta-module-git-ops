@@ -1,7 +1,8 @@
 # Changelog
 
-## v0.2.1 - ?
+## v0.3.0 - ?
 
+- Add slice migration support
 
 ## v0.2.0 - 2026-04-21
 

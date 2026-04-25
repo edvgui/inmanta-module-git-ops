@@ -17,7 +17,9 @@ Contact: edvgui@gmail.com
 """
 
 import collections
+import itertools
 import json
+import logging
 import pathlib
 import re
 import typing
@@ -40,6 +42,9 @@ from inmanta_plugins.git_ops import Slice, config, const, get_parent_path, slice
 SLICE_STORE_REGISTRY: dict[str, "SliceStore[slice.SliceObjectABC]"] = {}
 
 
+LOGGER = logging.getLogger(__name__)
+
+
 @dataclass(frozen=True, kw_only=True)
 class SliceFile[S: slice.SliceObjectABC]:
     """
@@ -52,11 +57,11 @@ class SliceFile[S: slice.SliceObjectABC]:
     extension: str
     schema: type[S]
 
-    def read(self) -> dict:
+    def read_raw(self) -> dict:
         """
-        Read the content of a slice file, using the appropriate library,
-        based on the file extension.  Return the json-like object
-        as a python dict.
+        Read the content of a slice file, without applying any schema
+        validation.  This is useful for migrations, where the file on
+        disk may predate the current schema.
         """
         if self.extension == "json":
             attributes = json.loads(self.path.read_text())
@@ -65,16 +70,55 @@ class SliceFile[S: slice.SliceObjectABC]:
         else:
             raise ValueError(f"Unsupported slice file extension: {self.extension}")
 
+        if attributes is None:
+            return {}
+        if not isinstance(attributes, dict):
+            raise ValueError(f"Slice file {self.path} does not contain a json mapping")
+        return attributes
+
+    def read(self) -> dict:
+        """
+        Read the content of a slice file, using the appropriate library,
+        based on the file extension.  Return the json-like object
+        as a python dict.
+        """
+        attributes = self.read_raw()
+
         if attributes == {}:
             # The slice has been deleted
             return {}
-        else:
-            # Load default values (and model only values)
-            return (
-                pydantic.TypeAdapter(self.schema)
-                .validate_python(attributes)
-                .model_dump(mode="json")
-            )
+
+        # Load default values (and model only values)
+        return (
+            pydantic.TypeAdapter(self.schema)
+            .validate_python(attributes)
+            .model_dump(mode="json")
+        )
+
+    def write_raw(self, attributes: dict) -> None:
+        """
+        Write the given raw attributes to the slice file, preserving the
+        file's extension, without applying any schema validation.  This
+        is useful for migrations, where the attributes may not yet
+        conform to the current schema.
+        """
+        if self.extension == "json":
+            try:
+                return self.path.write_text(json.dumps(attributes, indent=2))
+            except TypeError as e:
+                raise ValueError(
+                    f"Attributes can not be serialized: {attributes}"
+                ) from e
+
+        if self.extension in ["yaml", "yml"]:
+            try:
+                return self.path.write_text(yaml.safe_dump(attributes, sort_keys=False))
+            except yaml.error.YAMLError as e:
+                raise ValueError(
+                    f"Attributes can not be serialized: {attributes}"
+                ) from e
+
+        raise ValueError(f"Unsupported slice file extension: {self.extension}")
 
     def write(self, attributes: dict) -> None:
         """
@@ -95,23 +139,7 @@ class SliceFile[S: slice.SliceObjectABC]:
                 else {}
             )
 
-        if self.extension == "json":
-            try:
-                return self.path.write_text(json.dumps(attributes, indent=2))
-            except TypeError as e:
-                raise ValueError(
-                    f"Attributes can not be serialized: {attributes}"
-                ) from e
-
-        if self.extension in ["yaml", "yml"]:
-            try:
-                return self.path.write_text(yaml.safe_dump(attributes, sort_keys=False))
-            except yaml.error.YAMLError as e:
-                raise ValueError(
-                    f"Attributes can not be serialized: {attributes}"
-                ) from e
-
-        raise ValueError(f"Unsupported slice file extension: {self.extension}")
+        self.write_raw(attributes)
 
     def delete(self) -> None:
         """
@@ -200,6 +228,16 @@ class SliceFile[S: slice.SliceObjectABC]:
         )
 
 
+class SliceStoreMigrations(pydantic.BaseModel):
+    """
+    This model is used to keep track of the migrations applied to a slice store.
+    It is stored in a hidden file in the active folder of the store, and updated
+    after every successful migration.
+    """
+
+    applied: list[str] = []
+
+
 class SliceStore[S: slice.SliceObjectABC]:
     """
     Store slices loaded from file into memory, keep track of their changes, and
@@ -241,6 +279,12 @@ class SliceStore[S: slice.SliceObjectABC]:
         self.previous_slices: dict[str, Slice] | None = None
         self.slices: dict[str, Slice] | None = None
 
+        # This is the path to the file keeping track of the applied migrations for this store
+        self._migration_state_path: pathlib.Path | None = None
+
+        # The migrations registered for this store.
+        self.migrations: dict[str, typing.Callable[[dict], dict]] = {}
+
         self.register_store()
 
     @property
@@ -264,6 +308,45 @@ class SliceStore[S: slice.SliceObjectABC]:
                 resolve_path(f"inmanta:///git_ops/active/{self.name}/")
             )
         return self._active_path
+
+    @property
+    def migration_state_path(self) -> pathlib.Path:
+        """
+        Lazy resolution of the migration state path, to allow constructing the slice object
+        outside of an inmanta compile.
+        """
+        if self._migration_state_path is None:
+            self._migration_state_path = self.active_path / ".migrations.json"
+        return self._migration_state_path
+
+    def migration[F: typing.Callable[[dict], dict]](
+        self, name: str
+    ) -> typing.Callable[[F], F]:
+        """
+        Register a function as a migration for this slice store.
+
+        The function receives the raw attributes of a slice (as a python dict)
+        and must return the migrated attributes.  Empty dicts (``{}``) indicate
+        deleted slices and are not passed to the migration function.
+
+        :param name: A unique name identifying this migration within the store.
+            The name is used to remember that the migration has been applied
+            and must not be reused or renamed once published.  Migrations are
+            applied in alphabetical order of their names, so a common convention
+            is to prefix the name with the date.
+            i.e. ``"2024-06-01-add-foo-field"``.
+        """
+
+        def decorator(func: F) -> F:
+            if name in self.migrations:
+                raise ValueError(
+                    f"Migration {name!r} is already registered for store {self.name!r}"
+                )
+
+            self.migrations[name] = func
+            return func
+
+        return decorator
 
     def register_store(self) -> None:
         """
@@ -310,6 +393,14 @@ class SliceStore[S: slice.SliceObjectABC]:
         """
         if self.active_slices is not None:
             return self.active_slices
+
+        # Before loading the active slices, we need to run all the pending migrations,
+        # to make sure the active slices are up to date with the latest schema.  This
+        # is important because the source slices will be compared to the active slices
+        # to determine their version, and if the active slices are not up to date, we
+        # might end up with incorrect versions for the source slices, which can cause
+        # problems during the compile.
+        self.migrate()
 
         self.active_slices = {
             slice: [slice_file.emit_slice(self.name) for slice_file in slice_files]
@@ -370,6 +461,13 @@ class SliceStore[S: slice.SliceObjectABC]:
         """
         if self.source_slices is not None:
             return self.source_slices
+
+        # Before loading the source slices, we need to run all the pending migrations, to make
+        # sure the active slices are up to date with the latest schema.  This is important because
+        # the source slices will be compared to the active slices to determine their version, and
+        # if the active slices are not up to date, we might end up with incorrect versions for the
+        # source slices, which can cause problems during the compile.
+        self.migrate()
 
         active_slices = self.load_active_slices()
         source_slice_files = self.load_source_slice_files()
@@ -548,6 +646,120 @@ class SliceStore[S: slice.SliceObjectABC]:
 
         return self.slices
 
+    def applied_migrations(self) -> list[str]:
+        """
+        Get the list of applied migrations for this store, in the order they were applied.
+        """
+        if not self.migration_state_path.exists():
+            return []
+
+        try:
+            LOGGER.debug(
+                "Loading migration state for store %s from %s",
+                self.name,
+                self.migration_state_path,
+            )
+            raw = json.loads(self.migration_state_path.read_text())
+            return (
+                pydantic.TypeAdapter(SliceStoreMigrations).validate_python(raw).applied
+            )
+        except (json.JSONDecodeError, pydantic.ValidationError) as e:
+            LOGGER.error(
+                "Invalid migration state file at %s: %s", self.migration_state_path, e
+            )
+            raise ValueError(
+                f"Invalid migration state file at {self.migration_state_path}"
+            ) from e
+
+    def pending_migrations(self) -> list[str]:
+        """
+        Get the list of pending migrations for this store, in the order they should be applied.
+        A migration is pending if it is registered in the store but not yet applied to the active slices.
+        """
+        applied = set(self.applied_migrations())
+        pending = sorted(name for name in self.migrations.keys() if name not in applied)
+        LOGGER.debug(f"Pending migrations for store {self.name}: {pending}")
+        return pending
+
+    def apply_migration(self, name: str) -> None:
+        """
+        Apply the given migration to all the active and source slices.
+        The migration is applied by reading the raw attributes of each active slice, passing them through the
+        migration function, and writing back the migrated attributes to the source slice file.  Once all the
+        slices have been migrated, the migration is marked as applied in the migration state file.
+
+        :param name: The name of the migration to apply.
+        """
+        if name not in self.migrations:
+            raise ValueError(
+                "No migration with name %s registered for store %s", name, self.name
+            )
+
+        LOGGER.debug(f"Applying migration {name} for store {self.name}")
+        migration_func = self.migrations[name]
+
+        # First try to apply the migration to all the slices, to make sure it works on all of them, before writing
+        # any change to file.  This way we avoid leaving the store in a broken state if the migration fails halfway through.
+        slice_files: list[SliceFile] = itertools.chain(
+            self.load_source_slice_files().values(),
+            *self.load_active_slice_files().values(),
+        )
+        updated_slices: list[tuple[SliceFile, dict]] = []
+        for slice_file in slice_files:
+            raw_attributes = slice_file.read_raw()
+            if raw_attributes == {}:
+                # Deleted slice, skip it
+                continue
+
+            LOGGER.log(
+                0,
+                "Applying migration %s to slice %s with attributes %s",
+                name,
+                slice_file.path,
+                raw_attributes,
+            )
+            try:
+                migrated_attributes = migration_func(raw_attributes)
+            except Exception as e:
+                raise RuntimeError(
+                    f"Error occurred while applying migration {name} to slice {slice_file.path}: {e}"
+                ) from e
+
+            updated_slices.append((slice_file, migrated_attributes))
+
+        # Then save the migrated attributes for all the slices, now that we know the migration works on all of them
+        for slice_file, migrated_attributes in updated_slices:
+            try:
+                slice_file.write_raw(migrated_attributes)
+            except Exception as e:
+                raise RuntimeError(
+                    f"Error occurred while writing migrated attributes for slice {slice_file.path} during migration {name}: {e}"
+                ) from e
+
+        # Mark the migration as applied
+        applied = self.applied_migrations()
+        applied.append(name)
+        self.migration_state_path.write_text(
+            json.dumps(SliceStoreMigrations(applied=applied).model_dump(), indent=2)
+        )
+
+    def migrate(self) -> None:
+        """
+        Run all the pending migrations for this store.
+        A migration is pending if it is registered in the store but not yet applied to the active and source slices.
+        """
+        pending = self.pending_migrations()
+
+        if pending and const.COMPILE_MODE != const.COMPILE_UPDATE:
+            raise RuntimeError(
+                "Migrations can only be applied during an update compile, but the current "
+                f"compile mode is {const.COMPILE_MODE} and some pending migrations are detected "
+                f"for store {self.name}: {pending}"
+            )
+
+        for migration_name in self.pending_migrations():
+            self.apply_migration(migration_name)
+
     def sync(self) -> None:
         """
         Activate all the source slices.  For each source slice whose version is
@@ -555,7 +767,8 @@ class SliceStore[S: slice.SliceObjectABC]:
         """
         if const.COMPILE_MODE != const.COMPILE_SYNC:
             raise RuntimeError(
-                "Source slices can only be activated during an activating compile"
+                "Source slices can only be activated during an activating compile, "
+                f"but the current compile mode is {const.COMPILE_MODE}"
             )
 
         if self.source_slices is None:
@@ -604,7 +817,7 @@ class SliceStore[S: slice.SliceObjectABC]:
                     # This slice file is not the latest version, it should be pruned
                     slice_file.delete()
 
-            if latest_slice_file.read() == {}:
+            if latest_slice_file.read_raw() == {}:
                 # The latest slice file is deleted, it should be pruned too
                 latest_slice_file.delete()
 
