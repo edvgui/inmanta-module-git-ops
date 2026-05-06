@@ -18,9 +18,9 @@ Contact: edvgui@gmail.com
 
 import itertools
 import typing
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Iterator, Mapping
 
-from inmanta.plugins import plugin
+from inmanta.plugins import ModelType, plugin
 from inmanta.util import dict_path
 from inmanta_plugins.git_ops import Slice, attribute_processor, store
 
@@ -32,7 +32,7 @@ def used_values(
     *,
     name: str | None = None,
     slice_matching: Mapping[str, object] = {},
-) -> typing.Annotated[typing.Callable[[], Collection[object]], object]:
+) -> typing.Annotated[typing.Callable[[], Collection[object]], ModelType["any"]]:
     """
     Find all the used values in the described set of slices at the given
     path.  The set of slice can point to either a single slice if a name
@@ -53,13 +53,6 @@ def used_values(
     """
     path = dict_path.to_wild_path(wild_path)
 
-    # Get all the slices in which we should look for used values
-    slices = (
-        store.get_store(store_name).get_all_slices()
-        if name is None
-        else [store.get_store(store_name).get_one_slice(name)]
-    )
-
     matching_paths = {
         path: dict_path.to_path(path) for path, _ in slice_matching.items()
     }
@@ -67,17 +60,56 @@ def used_values(
     # Filter out the slices which don't match the filter
     def match_filter(s: Slice) -> bool:
         for raw_path, value in slice_matching.items():
-            slice_value = matching_paths[raw_path].get_element(s.attributes)
-            if slice_value != value:
+            try:
+                slice_value = matching_paths[raw_path].get_element(s.attributes)
+                if slice_value != value:
+                    return False
+            except dict_path.ContainerStructureException:
+                # If the slice is missing some of the attributes used in the
+                # filter, simply return False, no need to make the whole check
+                # fail for other slices
                 return False
 
         return True
 
-    # Apply the filter to the collection of slices
-    slices = [s for s in slices if match_filter(s)]
-
     def collect_usage() -> Collection[object]:
-        return list(itertools.chain(*[path.get_elements(s.attributes) for s in slices]))
+        # Get all the slices in which we should look for used values
+        slices = (
+            store.get_store(store_name).get_all_slices()
+            if name is None
+            else [store.get_store(store_name).get_one_slice(name)]
+        )
+
+        # Apply the filter to the collection of slices
+        slices = [s for s in slices if match_filter(s)]
+
+        def get_elements(
+            p: dict_path.WildDictPath, attributes: object
+        ) -> Iterator[object]:
+            # Dict path doesn't offer a best-effort solution to try to get
+            # all matching elements and ignoring parts of the tree which don't
+            # match the path format.  So we need to do this ourselves by navigating
+            # the path step by step
+            if attributes is None:
+                # We reached a dead end, the end value should be considered to be None
+                return
+
+            if not p.get_path_sections():
+                # We reached the end of the path, return whatever attributes
+                # we have
+                yield attributes
+                return
+
+            parts = p.get_path_sections()
+            for nested_attributes in parts[0].get_elements(attributes):
+                yield from get_elements(
+                    dict_path.WildComposedPath(path=parts[1:]),
+                    nested_attributes,
+                )
+
+        return list(
+            set(itertools.chain(*[get_elements(path, s.attributes) for s in slices]))
+        )
 
     return collect_usage
 
@@ -85,7 +117,7 @@ def used_values(
 @plugin
 def join_used_values(
     *used_values: typing.Annotated[typing.Callable[[], Collection[object]], object],
-) -> typing.Annotated[typing.Callable[[], Collection[object]], object]:
+) -> typing.Annotated[typing.Callable[[], Collection[object]], ModelType["any"]]:
     """
     Join multiple used values collectors into one.
     """

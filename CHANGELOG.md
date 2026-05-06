@@ -3,6 +3,7 @@
 ## v0.3.0 - ?
 
 - Add slice migration support
+- Fix usage of git_ops::processors::used_values on optional embedded slices
 
 ## v0.2.0 - 2026-04-21
 
