@@ -85,5 +85,11 @@ def test_fs(project: Project, monkeypatch: pytest.MonkeyPatch) -> None:
                     recursive.STORE.name, "embedded_optional.unique_id"
                 ),
                 processors.used_values(recursive.STORE.name, "unique_id"),
+                processors.used_values(
+                    recursive.STORE.name, "embedded_sequence[name=a].unique_id"
+                ),
+                processors.used_values(
+                    recursive.STORE.name, "embedded_sequence[baba=a].unique_id"
+                ),
             )()
         ) == {1, 2}
