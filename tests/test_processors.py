@@ -50,7 +50,7 @@ def test_fs(project: Project, monkeypatch: pytest.MonkeyPatch) -> None:
         ctx.setattr(const, "COMPILE_MODE", const.COMPILE_UPDATE)
 
         # Try to call the used_values plugin on the slice store
-        assert processors.used_values(recursive.STORE.name, "unique_id")() == [None]
+        assert processors.used_values(recursive.STORE.name, "unique_id")() == []
 
         # Assign an id to the first slice, it should now show up in used values
         s1.unique_id = 1

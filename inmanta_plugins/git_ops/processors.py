@@ -22,6 +22,7 @@ from collections.abc import Collection, Iterator, Mapping
 
 from inmanta.plugins import ModelType, plugin
 from inmanta.util import dict_path
+
 from inmanta_plugins.git_ops import Slice, attribute_processor, store
 
 
@@ -90,14 +91,14 @@ def used_values(
             # all matching elements and ignoring parts of the tree which don't
             # match the path format.  So we need to do this ourselves by navigating
             # the path step by step
+            if attributes is None:
+                # We reached a dead end, the end value should be considered to be None
+                return
+
             if not p.get_path_sections():
                 # We reached the end of the path, return whatever attributes
                 # we have
                 yield attributes
-                return
-
-            if attributes is None:
-                # We reached a dead end, the end value should be considered to be None
                 return
 
             parts = p.get_path_sections()
