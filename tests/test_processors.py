@@ -60,9 +60,6 @@ def test_fs(project: Project, monkeypatch: pytest.MonkeyPatch) -> None:
 
         # Getting the used values for a part of the service that doesn't exist
         # shouldn't cause any issue
-        assert (
-            processors.used_values(
-                recursive.STORE.name, "embedded_optional.unique_id"
-            )()
-            == []
-        )
+        assert processors.used_values(
+            recursive.STORE.name, "embedded_optional.unique_id"
+        )() == [None]

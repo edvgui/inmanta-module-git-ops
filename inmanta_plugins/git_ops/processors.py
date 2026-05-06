@@ -83,16 +83,34 @@ def used_values(
         # Apply the filter to the collection of slices
         slices = [s for s in slices if match_filter(s)]
 
-        def get_elements(s: Slice) -> Iterator[object]:
+        def get_elements(
+            p: dict_path.WildDictPath, attributes: object
+        ) -> Iterator[object]:
             # Dict path doesn't offer a best-effort solution to try to get
             # all matching elements and ignoring parts of the tree which don't
-            # match the path format.  To workaround this, we first try to resolve
-            # all wild cards (which happens only on matching paths) then
-            # get the elements for each of these.
-            for resolved_path in path.resolve_wild_cards(s.attributes):
-                yield from resolved_path.get_elements(s.attributes)
+            # match the path format.  So we need to do this ourselves by navigating
+            # the path step by step
+            if not p.get_path_sections():
+                # We reached the end of the path, return whatever attributes
+                # we have
+                yield attributes
+                return
 
-        return list(itertools.chain(*[get_elements(s) for s in slices]))
+            if attributes is None:
+                # We reached a dead end, the end value should be considered to be None
+                yield None
+                return
+
+            parts = path.get_path_sections()
+            for nested_attributes in parts[0].get_elements(attributes):
+                yield from get_elements(
+                    dict_path.WildComposedPath(path=parts[1:]),
+                    nested_attributes,
+                )
+
+        return list(
+            set(itertools.chain(*[get_elements(path, s.attributes) for s in slices]))
+        )
 
     return collect_usage
 
