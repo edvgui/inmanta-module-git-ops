@@ -98,10 +98,9 @@ def used_values(
 
             if attributes is None:
                 # We reached a dead end, the end value should be considered to be None
-                yield None
                 return
 
-            parts = path.get_path_sections()
+            parts = p.get_path_sections()
             for nested_attributes in parts[0].get_elements(attributes):
                 yield from get_elements(
                     dict_path.WildComposedPath(path=parts[1:]),

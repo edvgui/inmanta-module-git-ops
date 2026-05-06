@@ -60,6 +60,30 @@ def test_fs(project: Project, monkeypatch: pytest.MonkeyPatch) -> None:
 
         # Getting the used values for a part of the service that doesn't exist
         # shouldn't cause any issue
+        assert (
+            processors.used_values(
+                recursive.STORE.name, "embedded_optional.unique_id"
+            )()
+            == []
+        )
+
+        # Adding the optional value, the collector should pick it up too
+        s1.embedded_optional = recursive.EmbeddedSlice(
+            name="b",
+            unique_id=2,
+        )
+        s1_path.write_text(yaml.safe_dump(s1.model_dump(mode="json")))
+        recursive.STORE.clear()
         assert processors.used_values(
             recursive.STORE.name, "embedded_optional.unique_id"
-        )() == [None]
+        )() == [2]
+
+        # Searching for multiple ids at the same time should give us all of them
+        assert set(
+            processors.join_used_values(
+                processors.used_values(
+                    recursive.STORE.name, "embedded_optional.unique_id"
+                ),
+                processors.used_values(recursive.STORE.name, "unique_id"),
+            )()
+        ) == {1, 2}
