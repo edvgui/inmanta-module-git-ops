@@ -22,7 +22,6 @@ from collections.abc import Collection, Iterator, Mapping
 
 from inmanta.plugins import ModelType, plugin
 from inmanta.util import dict_path
-
 from inmanta_plugins.git_ops import Slice, attribute_processor, store
 
 
