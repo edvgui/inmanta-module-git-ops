@@ -59,5 +59,4 @@ jobs:
 
       - name: Run example tests
         run: |
-          cd docs/example
-          uv run pytest tests -vvv --log-cli-level debug
+          uv run pytest docs/example/tests -vvv --log-cli-level debug
