@@ -373,6 +373,11 @@ class SliceStore[S: slice.SliceObjectABC]:
         self.active_slice_files: dict[str, list[SliceFile]] = collections.defaultdict(
             list
         )
+
+        if const.COMPILE_MODE == const.COMPILE_EMPTY:
+            # Empty compile, we shouldn't load any slice
+            return self.active_slice_files
+
         for file in self.active_path.glob("*"):
             if not file.is_file():
                 # Not a file, ignore it
@@ -440,6 +445,11 @@ class SliceStore[S: slice.SliceObjectABC]:
         self.source_path.mkdir(parents=True, exist_ok=True)
 
         self.source_slice_files: dict[str, SliceFile] = {}
+
+        if const.COMPILE_MODE == const.COMPILE_EMPTY:
+            # Empty compile, we shouldn't load any slice
+            return self.source_slice_files
+
         for file in self.source_path.glob("*"):
             if not file.is_file():
                 # Not a file, ignore it

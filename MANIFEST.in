@@ -1,5 +1,6 @@
 include inmanta_plugins/git_ops/setup.cfg
 include inmanta_plugins/git_ops/py.typed
+include pytest_inmanta_git_ops/py.typed
 recursive-include inmanta_plugins/git_ops/model *.cf
 graft inmanta_plugins/git_ops/files
 graft inmanta_plugins/git_ops/templates
