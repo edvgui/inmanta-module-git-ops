@@ -17,6 +17,8 @@ Contact: edvgui@gmail.com
 """
 
 import uuid
+import typing
+import pathlib
 import pytest
 from pytest_inmanta.plugin import Project
 from inmanta_plugins.git_ops import const, store, slice
@@ -62,13 +64,100 @@ class GitOpsProject:
 
         raise ValueError("No model to compile!")
 
+    @typing.overload
+    def get_store(self, store_name: str, slice: None = None) -> store.SliceStore:
+        pass
+
+    @typing.overload
+    def get_store[S: slice.SliceObjectABC](
+        self,
+        store_name: str,
+        slice: S,
+    ) -> store.SliceStore[S]:
+        pass
+
+    def get_store[S: slice.SliceObjectABC](
+        self,
+        store_name: str,
+        slice: S | None = None,
+    ) -> store.SliceStore[S] | store.SliceStore:
+        """
+        Get the store with the given name.
+
+        :param store_name: The name of the store to fetch.
+        :param slice: When provided, validates that the resolved store accepts slices of the given type.
+        """
+        if self.stores is None:
+            raise RuntimeError("No stores have been loaded, call self.load_stores()")
+
+        if store_name not in self.stores:
+            raise LookupError(f"No store named {store_name} in project.  Available stores are: {list(self.stores)}")
+
+        slice_store = self.stores[store_name]
+
+        if slice is None:
+            return slice_store
+
+        # Validate that the schema of the store matches the type
+        # of the slice
+        if slice_store.schema is not type(slice):
+            raise RuntimeError(
+                f"Invalid slice store for slice {slice}: {store_name} has schema {slice_store.schema}"
+            )
+
+        return slice_store
+
+    def slice_name(self, s: slice.SliceObjectABC) -> str:
+        """
+        Generate a stable name for the given slice object, based on the keys attribute
+        of the slice.
+        """
+        return str(uuid.uuid5(self.environment, "-".join(getattr(s, k) for k in type(s).keys)))
+
+    def get_slice_source(self, store_name: str, slice_name: str) -> store.SliceFile:
+        """
+        Get the path in which the given named slice is defined.  This is the
+        path to the editable version of the slice (in the source store).
+
+        :param store_name: The name of the store in which the slice exists
+        :param slice_name: The name of the slice within the store
+        """
+        # First find the store in which the slice belongs
+        slice_store = self.get_store(store_name)
+        slice_path = slice_store.source_path / (slice_name + ".json")
+        slice_path.parent.mkdir(parents=True, exist_ok=True)
+
+        return store.SliceFile(
+            path=slice_path,
+            name=slice_name,
+            version=None,
+            extension="json",
+            schema=slice_store.schema,
+        )
+
+    def get_slice_versions(self, store_name: str, slice_name: str) -> list[store.SliceFile]:
+        """
+        Get the list of all known slice versions for the given store and slice name.
+
+        :param store_name: The name of the store in which the slice exists
+        :param slice_name: The name of the slice within the store
+        """
+        # First find the store in which the slice belongs
+        slice_store = self.get_store(store_name)
+        slice_files = [
+            store.SliceFile.from_path(path, slice_store.schema)
+            for path in slice_store.active_path.glob(f"{slice_name}@v*.json")
+        ]
+        return sorted(slice_files, key=lambda f: f.version or 0)
+
     def write_slice(
         self,
+        store_name: str,
+        slice_name: str,
         s: slice.SliceObjectABC,
         *,
         update: bool = True,
         sync: bool = True,
-        name: str | None = None,
         model: str | None = None,
     ) -> store.SliceFile:
         """
@@ -90,32 +179,8 @@ class GitOpsProject:
             is derived based on the identifying keys of the slice.
         :param model: The model to use in the compiles.
         """
-        # First fine the store in which the slice belongs
-        if self.stores is None:
-            raise RuntimeError("No stores have been loaded, call self.load_stores()")
-
-        try:
-            slice_store = next(
-                slice_store
-                for slice_store in self.stores.values()
-                if slice_store.schema is type(s)
-            )
-        except StopIteration as e:
-            raise RuntimeError(f"No store for slice {s} (type {type(s)}) in {list(self.stores)}") from e
-
-        # Resolve the source slice path
-        slice_name = name or str(uuid.uuid5(self.environment, "-".join(getattr(s, k) for k in type(s).keys)))
-        slice_path = slice_store.source_path / (slice_name + ".json")
-        slice_path.parent.mkdir(parents=True, exist_ok=True)
-
         # Create the source slice file object
-        slice_file = store.SliceFile(
-            path=slice_path,
-            name=slice_name,
-            version=None,
-            extension="json",
-            schema=type(s),
-        )
+        slice_file = self.get_slice_source(store_name, slice_name)
 
         # Write the slice to source slice file
         slice_file.write(s.model_dump(mode="json"))
@@ -127,13 +192,20 @@ class GitOpsProject:
         if sync:
             # Trigger syncing compile
             self.sync(model)
-            slice_files = [
-                store.SliceFile.from_path(path, type(s))
-                for path in slice_store.active_path.glob(f"{slice_name}@v*.json")
-            ]
-            slice_files = sorted(slice_files, key=lambda f: f.version or 0, reverse=True)
-            slice_file = slice_files[0]
+            slice_file = self.get_slice_versions(store_name, slice_name)[-1]
 
+        return slice_file
+
+    def remove_slice(self, store_name: str, slice_name: str) -> store.SliceFile:
+        """
+        Get the path in which the given slice is defined, and make sure it
+        doesn't exist.  Return the corresponding slice file object.
+
+        :param store_name: The name of the store in which the slice exists
+        :param slice_name: The name of the slice within the store
+        """
+        slice_file = self.get_slice_source(store_name, slice_name)
+        slice_file.path.unlink(missing_ok=True)
         return slice_file
 
     def update(self, model: str | None = None) -> None:
