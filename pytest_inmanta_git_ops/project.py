@@ -16,12 +16,15 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 
-import uuid
 import typing
-import pathlib
+import uuid
+
 import pytest
 from pytest_inmanta.plugin import Project
-from inmanta_plugins.git_ops import const, store, slice
+
+from inmanta.execute.proxy import DynamicProxy
+from inmanta_plugins.git_ops import const, slice, store
+from pytest_inmanta_git_ops.slice import GitOpsSlice
 
 
 class GitOpsProject:
@@ -29,7 +32,9 @@ class GitOpsProject:
     Helper class to interact with a git-ops project in a pytest test suite.
     """
 
-    def __init__(self, environment: uuid.UUID, project: Project, monkeypatch: pytest.MonkeyPatch) -> None:
+    def __init__(
+        self, environment: uuid.UUID, project: Project, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         self.environment = environment
         self.project = project
         self.monkeypatch = monkeypatch
@@ -91,7 +96,9 @@ class GitOpsProject:
             raise RuntimeError("No stores have been loaded, call self.load_stores()")
 
         if store_name not in self.stores:
-            raise LookupError(f"No store named {store_name} in project.  Available stores are: {list(self.stores)}")
+            raise LookupError(
+                f"No store named {store_name} in project.  Available stores are: {list(self.stores)}"
+            )
 
         slice_store = self.stores[store_name]
 
@@ -112,49 +119,27 @@ class GitOpsProject:
         Generate a stable name for the given slice object, based on the keys attribute
         of the slice.
         """
-        return str(uuid.uuid5(self.environment, "-".join(getattr(s, k) for k in type(s).keys)))
-
-    def get_slice_source(self, store_name: str, slice_name: str) -> store.SliceFile:
-        """
-        Get the path in which the given named slice is defined.  This is the
-        path to the editable version of the slice (in the source store).
-
-        :param store_name: The name of the store in which the slice exists
-        :param slice_name: The name of the slice within the store
-        """
-        # First find the store in which the slice belongs
-        slice_store = self.get_store(store_name)
-        slice_path = slice_store.source_path / (slice_name + ".json")
-        slice_path.parent.mkdir(parents=True, exist_ok=True)
-
-        return store.SliceFile(
-            path=slice_path,
-            name=slice_name,
-            version=None,
-            extension="json",
-            schema=slice_store.schema,
+        return str(
+            uuid.uuid5(self.environment, "-".join(getattr(s, k) for k in type(s).keys))
         )
 
-    def get_slice_versions(self, store_name: str, slice_name: str) -> list[store.SliceFile]:
+    def test_slice[S: slice.SliceObjectABC](
+        self,
+        s: S,
+        *,
+        store_name: str,
+        slice_name: str | None = None,
+    ) -> GitOpsSlice[S]:
         """
-        Get the list of all known slice versions for the given store and slice name.
-
-        :param store_name: The name of the store in which the slice exists
-        :param slice_name: The name of the slice within the store
+        Construct a GitOpsSlice object to wrap a slice, and easily maniupulate it in the
+        tests.
         """
-        # First find the store in which the slice belongs
-        slice_store = self.get_store(store_name)
-        slice_files = [
-            store.SliceFile.from_path(path, slice_store.schema)
-            for path in slice_store.active_path.glob(f"{slice_name}@v*.json")
-        ]
-        return sorted(slice_files, key=lambda f: f.version or 0)
+        slice_store = self.get_store(store_name, slice=s)
+        return GitOpsSlice(s, slice_store, slice_name or self.slice_name(s))
 
     def write_slice(
         self,
-        store_name: str,
-        slice_name: str,
-        s: slice.SliceObjectABC,
+        s: GitOpsSlice,
         *,
         update: bool = True,
         sync: bool = True,
@@ -180,10 +165,10 @@ class GitOpsProject:
         :param model: The model to use in the compiles.
         """
         # Create the source slice file object
-        slice_file = self.get_slice_source(store_name, slice_name)
+        slice_file = s.get_source()
 
         # Write the slice to source slice file
-        slice_file.write(s.model_dump(mode="json"))
+        slice_file.write(s.slice.model_dump(mode="json"))
 
         if update:
             # Trigger updating compile
@@ -192,11 +177,18 @@ class GitOpsProject:
         if sync:
             # Trigger syncing compile
             self.sync(model)
-            slice_file = self.get_slice_versions(store_name, slice_name)[-1]
+            slice_file = s.get_versions()[-1]
 
         return slice_file
 
-    def remove_slice(self, store_name: str, slice_name: str) -> store.SliceFile:
+    def remove_slice(
+        self,
+        s: GitOpsSlice,
+        *,
+        update: bool = True,
+        sync: bool = True,
+        model: str | None = None,
+    ) -> store.SliceFile:
         """
         Get the path in which the given slice is defined, and make sure it
         doesn't exist.  Return the corresponding slice file object.
@@ -204,9 +196,40 @@ class GitOpsProject:
         :param store_name: The name of the store in which the slice exists
         :param slice_name: The name of the slice within the store
         """
-        slice_file = self.get_slice_source(store_name, slice_name)
-        slice_file.path.unlink(missing_ok=True)
+        slice_file = s.get_source()
+        slice_file.delete()
+
+        if update:
+            # Trigger updating compile
+            self.update(model)
+
+        if sync:
+            # Trigger syncing compile
+            self.sync(model)
+            slice_file = s.get_versions()[-1]
+
         return slice_file
+
+    def get_instance(self, s: GitOpsSlice) -> DynamicProxy:
+        """
+        Try to get the instance of the given slice in the result of the latest compile.
+        The returned object is the DynamicProxy instance matching the input slice that
+        was created by unrolling the slice store in which our slice is defined.
+
+        Raises a LookupError if no matching instance can be found.
+        """
+        for instance in self.project.get_instances("git_ops::slice::SliceObjectABC"):
+            if instance.slice_store != s.store.name:
+                continue
+
+            if instance.slice_name != s.name:
+                continue
+
+            return instance
+
+        raise LookupError(
+            f"Couldn't find any slice named {s.name} in store {s.store.name} in latest compile"
+        )
 
     def update(self, model: str | None = None) -> None:
         """

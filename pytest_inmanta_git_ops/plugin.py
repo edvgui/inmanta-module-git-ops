@@ -15,12 +15,14 @@ limitations under the License.
 
 Contact: edvgui@gmail.com
 """
-import pytest
+
 import uuid
 
+import pytest
 from pytest_inmanta.plugin import Project
-from pytest_inmanta_git_ops.project import GitOpsProject
+
 from inmanta.config import Config
+from pytest_inmanta_git_ops.project import GitOpsProject
 
 
 @pytest.fixture(scope="function")
