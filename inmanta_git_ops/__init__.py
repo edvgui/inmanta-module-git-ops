@@ -1,5 +1,5 @@
 """
-Copyright 2025 Guillaume Everarts de Velp
+Copyright 2026 Guillaume Everarts de Velp
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,25 +15,3 @@ limitations under the License.
 
 Contact: edvgui@gmail.com
 """
-
-import os
-
-import pydantic
-
-from inmanta_plugins.git_ops import CompileMode
-
-COMPILE_UPDATE = "update"
-COMPILE_SYNC = "sync"
-COMPILE_EXPORT = "export"
-COMPILE_PRUNE = "prune"
-COMPILE_EMPTY = "empty"
-
-COMPILE_MODE_ENV_VAR = "INMANTA_GIT_OPS_COMPILE_MODE"
-COMPILE_MODE_ADAPTER = pydantic.TypeAdapter(CompileMode)
-COMPILE_MODE = COMPILE_MODE_ADAPTER.validate_python(
-    os.getenv(COMPILE_MODE_ENV_VAR, COMPILE_EXPORT)
-)
-
-SLICE_CREATE = "create"
-SLICE_UPDATE = "update"
-SLICE_DELETE = "delete"

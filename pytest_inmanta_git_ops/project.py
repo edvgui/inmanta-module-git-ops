@@ -23,7 +23,8 @@ import pytest
 from pytest_inmanta.plugin import Project
 
 from inmanta.execute.proxy import DynamicProxy
-from inmanta_plugins.git_ops import const, slice, store
+from inmanta_git_ops import const
+from inmanta_plugins.git_ops import slice, store
 from pytest_inmanta_git_ops.slice import GitOpsSlice
 
 

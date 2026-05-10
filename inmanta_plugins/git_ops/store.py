@@ -35,7 +35,8 @@ from inmanta_plugins.config.const import InmantaPath, SystemPath
 from inmanta.compiler import finalizer
 from inmanta.execute.proxy import SequenceProxy
 from inmanta.util import dict_path
-from inmanta_plugins.git_ops import Slice, config, const, get_parent_path, slice
+from inmanta_git_ops import const
+from inmanta_plugins.git_ops import Slice, config, get_parent_path, slice
 
 # Dict registering all the slice stores when they are being created
 # This allows to find the store back, to access its slices.

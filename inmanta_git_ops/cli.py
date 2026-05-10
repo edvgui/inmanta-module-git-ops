@@ -28,7 +28,7 @@ import click
 import texttable
 
 from inmanta.module import ModuleV2, Project
-from inmanta_plugins.git_ops import const
+from inmanta_git_ops import const
 from inmanta_plugins.git_ops.store import SLICE_STORE_REGISTRY
 
 LOGGER = logging.getLogger(__name__)
@@ -99,7 +99,7 @@ def generate(explicit_parent_relations: bool) -> None:
     """
     Generate the model for the slices defined in the input module.
     """
-    from inmanta_plugins.git_ops import generator
+    from inmanta_git_ops import generator
 
     if explicit_parent_relations:
         generator.EXPLICIT_PARENT_RELATIONS = True

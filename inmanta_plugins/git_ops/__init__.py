@@ -24,8 +24,7 @@ from dataclasses import asdict, dataclass
 
 from inmanta.plugins import Plugin, plugin
 from inmanta.util import dict_path
-
-type CompileMode = typing.Literal["update", "sync", "export", "prune"]
+from inmanta_git_ops import const
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -231,7 +230,6 @@ def attribute_processor[F: AttributeProcessorFunction](func: F) -> F:
 
     :param func: The processor function to register and wrap.
     """
-    from inmanta_plugins.git_ops import const
 
     # Make sure that the inmanta compiler sees this wrapped function the same way
     # as the plugin it wraps, with its annotations and defaults
