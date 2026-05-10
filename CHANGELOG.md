@@ -4,6 +4,7 @@
 
 - Add slice migration support
 - Fix usage of git_ops::processors::used_values on optional embedded slices
+- Add pytest_inmanta_git_ops testing library, installable using [pytest] extra.
 
 ## v0.2.0 - 2026-04-21
 
