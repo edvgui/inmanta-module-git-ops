@@ -174,6 +174,9 @@ class GitOpsProject:
             # Trigger updating compile
             self.update(model)
 
+            # Refresh slice object with updated data
+            s.slice = s.store.schema(**slice_file.read())
+
         if sync:
             # Trigger syncing compile
             self.sync(model)
