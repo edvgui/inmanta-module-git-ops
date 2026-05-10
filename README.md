@@ -16,6 +16,22 @@ All of this is already natively supported by the orchestrator by modifying the `
 
 More details about the design in the [docs](docs/) folder.
 
+## Packaged modules
+
+The `inmanta-module-git-ops` python package ships three top-level modules:
+
+- `inmanta_plugins.git_ops`: the inmanta module itself, containing the plugins, slice/store
+  primitives and processors used by the model.  This is the public API to import from other
+  inmanta modules building on top of git_ops.
+- `pytest_inmanta_git_ops`: a pytest plugin exposing the `git_ops_project` fixture and the
+  `GitOpsProject` helper class to write tests for modules using git_ops.  This is the public
+  API to import from the test suite of other inmanta modules.
+- `inmanta_git_ops`: holds code that must live outside of `inmanta_plugins` (constants, the
+  `git-ops` CLI, the project generator).  The `inmanta_plugins` namespace can be reloaded
+  by various code paths (notably the `clean_reset` fixture from `inmanta-core`), so anything
+  that needs stable module-level state (e.g. constants used as monkeypatch targets) is
+  extracted here.  This module is **not** meant to be imported from other inmanta modules.
+
 ## Cli
 
 This module also provides a cli interface, to facilitate the creation of a module based on git_ops and the management of a project using git_ops.
@@ -37,6 +53,42 @@ Commands:
   project  Commands to manage the current Inmanta project.
 ```
 
+
+## Testing modules built on git_ops
+
+The `pytest_inmanta_git_ops` plugin provides a `git_ops_project` fixture that wraps the
+`pytest-inmanta` `project` fixture and lets you drive update/sync/export/prune compiles
+on a model, write/remove slices, and assert on the resulting instances.
+
+```python
+from inmanta_plugins.example.slices import fs
+from pytest_inmanta_git_ops.project import GitOpsProject
+
+
+def test_fs(git_ops_project: GitOpsProject) -> None:
+    git_ops_project.load_stores("import example::slices::fs::unroll")
+
+    slice1 = git_ops_project.test_slice(
+        fs.RootFolder(root="/tmp/", name="test"),
+        store_name=fs.STORE.name,
+    )
+
+    # Write the slice to disk and trigger an update + sync compile
+    assert git_ops_project.write_slice(slice1).version == 1
+    assert len(git_ops_project.get_instance(slice1).directories) == 0
+
+    # Mutate the slice, write again, and check the new version
+    slice1.slice.directories = [fs.Folder(name="a"), fs.Folder(name="b")]
+    assert git_ops_project.write_slice(slice1).version == 2
+
+    # Remove the slice
+    git_ops_project.remove_slice(slice1)
+    git_ops_project.prune()
+```
+
+A more complete example lives in [docs/example](docs/example/), including the matching
+slice definitions and the full test suite under
+[docs/example/tests](docs/example/tests/).
 
 ## Running tests
 
