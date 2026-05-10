@@ -56,3 +56,7 @@ jobs:
       - name: Run tests
         run: |
           uv run pytest tests -vvv --log-cli-level debug
+
+      - name: Run example tests
+        run: |
+          uv run pytest docs/example/tests -vvv --log-cli-level debug

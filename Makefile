@@ -1,4 +1,4 @@
-SOURCE_DIRS = inmanta_plugins tests docs/example/inmanta_plugins
+SOURCE_DIRS = inmanta_plugins tests docs/example/inmanta_plugins docs/example/tests pytest_inmanta_git_ops
 
 isort = isort $(SOURCE_DIRS)
 black_preview = black --preview $(SOURCE_DIRS)
