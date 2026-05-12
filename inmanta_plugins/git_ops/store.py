@@ -390,7 +390,7 @@ class SliceStore[S: slice.SliceObjectABC]:
             return self.active_slice_files
 
         # Make sure the slice folder exists
-        self_ensure_active_path()
+        self.ensure_active_path()
 
         self.active_slice_files: dict[str, list[SliceFile]] = collections.defaultdict(
             list
