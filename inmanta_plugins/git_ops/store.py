@@ -361,6 +361,27 @@ class SliceStore[S: slice.SliceObjectABC]:
 
         SLICE_STORE_REGISTRY[self.name] = self
 
+    def ensure_active_path(self) -> None:
+        """
+        Make sure the active store folder exists.  When the folder is created for the
+        first time, pre-save all currently registered migrations as applied: a brand new
+        store has no slices to migrate, so any registered migration is effectively
+        already up to date.
+        """
+        if self.active_path.exists():
+            return
+
+        self.active_path.mkdir(parents=True, exist_ok=True)
+        if not self.migration_state_path.exists():
+            self.migration_state_path.write_text(
+                json.dumps(
+                    SliceStoreMigrations(
+                        applied=list(self.migrations.keys())
+                    ).model_dump(),
+                    indent=2,
+                )
+            )
+
     def load_active_slice_files(self) -> dict[str, list[SliceFile]]:
         """
         Load all the files defining slices in the active folder.
@@ -369,7 +390,7 @@ class SliceStore[S: slice.SliceObjectABC]:
             return self.active_slice_files
 
         # Make sure the slice folder exists
-        self.active_path.mkdir(parents=True, exist_ok=True)
+        self.ensure_active_path()
 
         self.active_slice_files: dict[str, list[SliceFile]] = collections.defaultdict(
             list
@@ -399,14 +420,6 @@ class SliceStore[S: slice.SliceObjectABC]:
         """
         if self.active_slices is not None:
             return self.active_slices
-
-        # Before loading the active slices, we need to run all the pending migrations,
-        # to make sure the active slices are up to date with the latest schema.  This
-        # is important because the source slices will be compared to the active slices
-        # to determine their version, and if the active slices are not up to date, we
-        # might end up with incorrect versions for the source slices, which can cause
-        # problems during the compile.
-        self.migrate()
 
         self.active_slices = {
             slice: [slice_file.emit_slice(self.name) for slice_file in slice_files]
@@ -472,13 +485,6 @@ class SliceStore[S: slice.SliceObjectABC]:
         """
         if self.source_slices is not None:
             return self.source_slices
-
-        # Before loading the source slices, we need to run all the pending migrations, to make
-        # sure the active slices are up to date with the latest schema.  This is important because
-        # the source slices will be compared to the active slices to determine their version, and
-        # if the active slices are not up to date, we might end up with incorrect versions for the
-        # source slices, which can cause problems during the compile.
-        self.migrate()
 
         active_slices = self.load_active_slices()
         source_slice_files = self.load_source_slice_files()
@@ -617,6 +623,13 @@ class SliceStore[S: slice.SliceObjectABC]:
             # delete the unused ones
             self.slices = {}
             return self.slices
+
+        # Before loading the source slices, we need to run all the pending migrations, to make
+        # sure the active slices are up to date with the latest schema.  This is important because
+        # the source slices will be compared to the active slices to determine their version, and
+        # if the active slices are not up to date, we might end up with incorrect versions for the
+        # source slices, which can cause problems during the compile.
+        self.migrate()
 
         previous_slices = self.load_previous_slices()
 
@@ -759,6 +772,7 @@ class SliceStore[S: slice.SliceObjectABC]:
         Run all the pending migrations for this store.
         A migration is pending if it is registered in the store but not yet applied to the active and source slices.
         """
+        self.ensure_active_path()
         pending = self.pending_migrations()
 
         if pending and const.COMPILE_MODE != const.COMPILE_UPDATE:
@@ -768,7 +782,7 @@ class SliceStore[S: slice.SliceObjectABC]:
                 f"for store {self.name}: {pending}"
             )
 
-        for migration_name in self.pending_migrations():
+        for migration_name in pending:
             self.apply_migration(migration_name)
 
     def sync(self) -> None:

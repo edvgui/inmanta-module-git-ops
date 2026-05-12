@@ -2,6 +2,8 @@
 
 ## v0.3.1 - ?
 
+- Fix initial compile of a store with registered migrations on a fresh active folder.
+
 
 ## v0.3.0 - 2026-05-10
 

@@ -208,3 +208,39 @@ def test_migrations(
             "unique_id": None,
         }
     )
+
+
+def test_migrations_initial_compile(project: Project, tmp_path: pathlib.Path) -> None:
+    """
+    A brand-new store (active folder does not exist yet) with registered migrations
+    should treat those migrations as already applied: there are no slices to migrate.
+    Without this, a non-update compile mode would fail because pending_migrations()
+    would report every registered migration as pending.
+    """
+    store = SliceStore(
+        name="test_migrations_initial_compile",
+        folder="file://" + str(tmp_path / "test"),
+        schema=Slice,
+    )
+
+    @store.migration("001_noop")
+    def noop(attrs: dict) -> dict:
+        return attrs
+
+    assert not store.active_path.exists()
+    assert not store.migration_state_path.exists()
+
+    model = """
+        import git_ops
+        git_ops::unroll_slices("test_migrations_initial_compile")
+    """
+
+    # Default compile mode (empty) — must not raise even though a migration is registered
+    project.compile(model)
+
+    assert store.active_path.exists()
+    assert store.migration_state_path.exists()
+    assert json.loads(store.migration_state_path.read_text())["applied"] == list(
+        store.migrations.keys()
+    )
+    assert store.pending_migrations() == []
