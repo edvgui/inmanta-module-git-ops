@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.3.1 - ?
+## v0.3.1 - 2026-05-12
 
 - Fix initial compile of a store with registered migrations on a fresh active folder.
 
