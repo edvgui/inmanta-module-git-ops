@@ -55,6 +55,7 @@ def test_fs(git_ops_project: GitOpsProject) -> None:
     assert git_ops_project.write_slice(slice1).version == 2
     assert len(slice1.get_versions()) == 2
     assert len(git_ops_project.get_instance(slice1).content) == 4
+    assert git_ops_project.get_instance(slice1).content[0].path == "content[type=folder][name=a]"
 
     # Prune version after update
     git_ops_project.prune()
