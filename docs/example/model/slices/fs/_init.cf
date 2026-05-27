@@ -58,7 +58,7 @@ Peer relation: Relation to parent
 """
 
 
-entity FolderDirectories extends Folder, FolderContent:
+entity FolderFolder extends Folder, FolderContent:
     """
     This entity has been generated because it's base entity:
 
@@ -70,10 +70,9 @@ entity FolderDirectories extends Folder, FolderContent:
 
     :rel folder: Relation to parent
     """
-    string type = "folder"
 end
 
-index FolderDirectories(folder, name)
+index FolderFolder(folder, name)
 
 entity PathABC extends git_ops::slice::EmbeddedSliceObjectABC:
     """
@@ -109,7 +108,7 @@ implement File using std::none, parents
 
 implement Folder using std::none, parents
 
-implement FolderDirectories using parents
+implement FolderFolder using parents
 
 implement PathABC using std::none, parents
 
