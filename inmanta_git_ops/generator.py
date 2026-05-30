@@ -18,6 +18,7 @@ Contact: edvgui@gmail.com
 
 import functools
 import importlib
+import json
 import pathlib
 from collections.abc import Sequence
 
@@ -173,6 +174,7 @@ def get_attribute(
     schema: slice.SliceEntityAttributeSchema,
     *,
     entity: Entity,
+    default: str | None = None,
 ) -> Attribute:
     """
     Generate the attribute matching the input schema.
@@ -180,11 +182,14 @@ def get_attribute(
     :param schema: The schema defining the attribute type and description.
     :param builder: The builder in which the entity to which this attribute
         belongs will be added.
+    :param default: When set, the DSL literal to use as the default value of
+        the attribute.
     """
     return Attribute(
         name=schema.name,
         inmanta_type=get_attribute_type(schema.inmanta_type),
         optional=isinstance(schema.inmanta_type, NullableType),
+        default=default,
         description=long_description(schema.description, max_len=70, indent=" " * 4),
         entity=entity,
     )
@@ -218,7 +223,65 @@ def get_relation(
         description="Relation to parent",
     )
 
-    if schema.entity.has_many_parents():
+    if schema.entity.discriminator is not None:
+        # The relation points to the base of a discriminated union.  Emit the
+        # union base (it carries the parent relation), then materialize each
+        # member.  Members with a single parent context extend the union base
+        # directly; members with multiple parent contexts are wrapped in a
+        # generated helper that extends both the member and the union base.
+        embedded_entity = get_entity(
+            schema=schema.entity,
+            parent_relation=parent_relation,
+        )
+        for sub_schema in schema.entity.sub_entities:
+            if sub_schema.has_many_parents():
+                sub_entity = get_entity(
+                    schema=sub_schema,
+                    parent_relation=None,
+                )
+                helper = Entity(
+                    name=parent.name + sub_schema.name,
+                    path=parent.path,
+                    parents=[sub_entity, embedded_entity],
+                    description=(
+                        "This entity has been generated because it's base entity:\n\n"
+                        f"    {sub_entity.full_path_string}\n\n"
+                        "has multiple parent.  Or in other words, multiple entities\n"
+                        "have a relation to this base entity, making it impossible\n"
+                        "to define a unique parent relation."
+                    ),
+                    force_attribute_doc=False,
+                    sort_attributes=False,
+                )
+                builder.add_module_element(helper)
+
+                helper_key_fields: dict[str, EntityField] = {
+                    parent_relation.name: parent_relation,
+                }
+                for field in helper.all_fields():
+                    if field.name in sub_schema.keys:
+                        helper_key_fields[field.name] = field
+                builder.add_module_element(
+                    Index(
+                        path=helper.path,
+                        entity=helper,
+                        fields=helper_key_fields.values(),
+                    )
+                )
+                builder.add_module_element(
+                    Implement(
+                        path=helper.path,
+                        implementation=None,
+                        entity=helper,
+                        using_parents=True,
+                    )
+                )
+            else:
+                get_entity(
+                    schema=sub_schema,
+                    parent_relation=parent_relation,
+                )
+    elif schema.entity.has_many_parents():
         base = get_entity(
             schema=schema.entity,
             parent_relation=None,
@@ -311,15 +374,25 @@ def get_entity(
 
     builder = get_module_builder(entity_path[0])
 
+    # When this entity is a member of a discriminated union with many parent
+    # contexts, the union base is moved from this entity's extends list to the
+    # generated helper, so we skip it here.
+    union_base_schema = next(
+        (base for base in schema.base_entities if base.discriminator is not None),
+        None,
+    )
+    skip_union_base_in_extends = (
+        union_base_schema is not None and schema.has_many_parents()
+    )
+
     # Emit the entity
     entity = Entity(
         name=schema.name,
         path=schema.path,
         parents=[
-            get_entity(
-                schema=parent,
-            )
+            get_entity(schema=parent)
             for parent in schema.base_entities
+            if not (skip_union_base_in_extends and parent is union_base_schema)
         ]
         + [std.entity],
         description=long_description(schema.description),
@@ -331,6 +404,19 @@ def get_entity(
 
     # Go over all the attributes and relations
     for attribute in schema.attributes:
+        if attribute.is_discriminator:
+            # Discriminator attributes are emitted with their fixed value on
+            # every union member entity, regardless of whether the union base
+            # is in the DSL extends list (the multi-parent helper extends the
+            # union base, but the member itself still carries the default
+            # so the value is visible to the runtime).
+            if schema.discriminator_value is not None:
+                get_attribute(
+                    attribute,
+                    entity=entity,
+                    default=json.dumps(schema.discriminator_value),
+                )
+            continue
         get_attribute(attribute, entity=entity)
 
     for relation in schema.embedded_entities:
@@ -341,8 +427,10 @@ def get_entity(
             )
         )
 
-    # Generate an index
-    if slice_root or parent_relation is not None:
+    # Generate an index.  The base of a discriminated union is abstract: its
+    # keys are carried by its concrete sub entities, which define their own
+    # indexes, so no index is generated for the base itself.
+    if (slice_root or parent_relation is not None) and schema.discriminator is None:
         key_fields: dict[str, EntityField] = {}
 
         if parent_relation is not None:
@@ -360,16 +448,19 @@ def get_entity(
             )
         )
 
-    # Add a basic implement statement
-    builder.add_module_element(
-        Implement(
-            path=entity.path,
-            implementation=None,
-            entity=entity,
-            using_parents=True,
-            implementations=[std.none],
+    # Add a basic implement statement.  The base of a discriminated union is
+    # abstract: its concrete sub entities (or their multi-parent helpers) are
+    # the ones that get implemented.
+    if schema.discriminator is None:
+        builder.add_module_element(
+            Implement(
+                path=entity.path,
+                implementation=None,
+                entity=entity,
+                using_parents=True,
+                implementations=[std.none],
+            )
         )
-    )
 
     return entity
 

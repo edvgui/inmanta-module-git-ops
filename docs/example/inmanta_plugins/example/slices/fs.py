@@ -73,7 +73,7 @@ class Folder(PathABC):
     type: typing.Literal["folder"] = "folder"
     content: Sequence["FolderContent"] = pydantic.Field(
         default_factory=list,
-        description="A list of folder to manage within this folder.",
+        description="A list of files and folders to manage within this folder.",
     )
 
 

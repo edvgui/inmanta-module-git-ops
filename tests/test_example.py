@@ -49,13 +49,11 @@ def test_fs(project: Project, monkeypatch: pytest.MonkeyPatch) -> None:
         directories=[
             fs.Folder(
                 name="b",
-                files=[
+                content=[
                     fs.File(
                         name="b.txt",
                         content="b",
                     ),
-                ],
-                directories=[
                     fs.Folder(
                         name="c",
                     ),

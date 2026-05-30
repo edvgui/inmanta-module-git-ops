@@ -72,5 +72,13 @@ implement EmbeddedSliceObjectABC using std::none, parents
 
 implement SliceObjectABC using std::none, parents
 
-# This file has been generated using inmanta-module-factory==3.1.0
+implementation parent_relations for EmbeddedSliceObjectABC:
+    """
+    Attach the resources to the parent resources.
+    """
+    self.parent.resources += self.resources
+    self.parent.owned_resources += self.owned_resources
+end
+
+# This file has been generated using inmanta-module-factory==3.1.1
 # <IMF-GENERATED-FILE/>
