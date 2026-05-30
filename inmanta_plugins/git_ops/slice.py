@@ -467,9 +467,7 @@ class SliceEntitySchema:
                 None,
             )
             if discriminator is not None:
-                identity.append(
-                    (discriminator, str(instance[discriminator]))
-                )
+                identity.append((discriminator, str(instance[discriminator])))
         identity.extend((k, str(instance[k])) for k in self.keys)
         return tuple(identity)
 
@@ -538,11 +536,7 @@ class SliceEntitySchema:
 
         if self.discriminator_value is not None:
             union_base = next(
-                (
-                    base
-                    for base in self.base_entities
-                    if base.discriminator is not None
-                ),
+                (base for base in self.base_entities if base.discriminator is not None),
                 None,
             )
             if union_base is not None:
@@ -666,9 +660,7 @@ class EmbeddedSliceObjectABC(pydantic.BaseModel):
                 and origin in [Sequence, list, typing.Sequence]
                 and (args := typing.get_args(python_type)) is not None
             ):
-                target = relation_target_schema(
-                    args[0], cls, fallback_name=attribute
-                )
+                target = relation_target_schema(args[0], cls, fallback_name=attribute)
                 if target is not None:
                     embedded_entities.append(
                         SliceEntityRelationSchema(
@@ -684,9 +676,7 @@ class EmbeddedSliceObjectABC(pydantic.BaseModel):
             # Optional relation
             with contextlib.suppress(ValueError):
                 optional = get_optional_type(python_type)
-                target = relation_target_schema(
-                    optional, cls, fallback_name=attribute
-                )
+                target = relation_target_schema(optional, cls, fallback_name=attribute)
                 if target is not None:
                     embedded_entities.append(
                         SliceEntityRelationSchema(
