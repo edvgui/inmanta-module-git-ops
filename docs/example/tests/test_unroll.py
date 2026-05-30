@@ -39,38 +39,43 @@ def test_fs(git_ops_project: GitOpsProject) -> None:
     )
     assert git_ops_project.write_slice(slice1).version == 1
     assert len(slice1.get_versions()) == 1
-    assert len(git_ops_project.get_instance(slice1).directories) == 0
+    assert len(git_ops_project.get_instance(slice1).content) == 0
 
     # Empty update on the slice, we should get the same version
     assert git_ops_project.write_slice(slice1).version == 1
     assert len(slice1.get_versions()) == 1
 
     # Add some folder
-    slice1.slice.directories = [
+    slice1.slice.content = [
         fs.Folder(name="a"),
         fs.Folder(name="b"),
         fs.Folder(name="c"),
+        fs.File(name="d"),
     ]
     assert git_ops_project.write_slice(slice1).version == 2
     assert len(slice1.get_versions()) == 2
-    assert len(git_ops_project.get_instance(slice1).directories) == 3
+    assert len(git_ops_project.get_instance(slice1).content) == 4
+    assert (
+        git_ops_project.get_instance(slice1).content[0].path
+        == "content[type=folder][name=a]"
+    )
 
     # Prune version after update
     git_ops_project.prune()
     assert len(slice1.get_versions()) == 1
 
     # Remove a folder
-    slice1.slice.directories = [
+    slice1.slice.content = [
         fs.Folder(name="a"),
         fs.Folder(name="b"),
     ]
     assert git_ops_project.write_slice(slice1).version == 3
     assert len(slice1.get_versions()) == 2
-    assert len(git_ops_project.get_instance(slice1).directories) == 3
+    assert len(git_ops_project.get_instance(slice1).content) == 4
     assert (
         next(
             dir
-            for dir in git_ops_project.get_instance(slice1).directories
+            for dir in git_ops_project.get_instance(slice1).content
             if dir.operation == const.SLICE_DELETE
         ).name
         == "c"
@@ -80,12 +85,12 @@ def test_fs(git_ops_project: GitOpsProject) -> None:
     git_ops_project.prune()
     assert len(slice1.get_versions()) == 1
     git_ops_project.export()
-    assert len(git_ops_project.get_instance(slice1).directories) == 2
+    assert len(git_ops_project.get_instance(slice1).content) == 2
 
     # Delete slice
     assert git_ops_project.remove_slice(slice1).version == 4
     assert git_ops_project.remove_slice(slice1).emit_slice(fs.STORE.name).deleted
-    assert len(git_ops_project.get_instance(slice1).directories) == 2
+    assert len(git_ops_project.get_instance(slice1).content) == 2
 
     # Prune after delete
     git_ops_project.prune()

@@ -18,14 +18,14 @@ Contact: edvgui@gmail.com
 import git_ops::slice
 import std
 
-entity File extends PathABC:
+entity File extends PathABC, FolderContent:
     """
     A text file in a folder, with its textual content.
 
     :attr content: The textual content of the file.
     :attr previous_content: The previous desired content of the file.
-    :rel folder: Relation to parent
     """
+    string type = "file"
     string content
     string? previous_content = null
 end
@@ -36,24 +36,27 @@ entity Folder extends PathABC:
     """
     A folder in the filesystem tree, containing files and other folders.
 
-    :rel files: A list of files to manage in the folder.
-    :rel directories: A list of folder to manage within this folder.
+    :rel content: A list of files and folders to manage within this folder.
     """
+    string type = "folder"
 end
 
-Folder.directories [0:] -- FolderDirectories.folder [1]
+Folder.content [0:] -- FolderContent.folder [1]
 """
-A list of folder to manage within this folder.
+A list of files and folders to manage within this folder.
 Peer relation: Relation to parent
 """
 
-Folder.files [0:] -- File.folder [1]
-"""
-A list of files to manage in the folder.
-Peer relation: Relation to parent
-"""
+entity FolderContent:
+    """
+    Base entity for the members of the FolderContent discriminated union.
 
-entity FolderDirectories extends Folder:
+    :rel folder: Relation to parent
+    """
+    string type
+end
+
+entity FolderFolder extends Folder, FolderContent:
     """
     This entity has been generated because it's base entity:
 
@@ -62,12 +65,10 @@ entity FolderDirectories extends Folder:
     has multiple parent.  Or in other words, multiple entities
     have a relation to this base entity, making it impossible
     to define a unique parent relation.
-
-    :rel folder: Relation to parent
     """
 end
 
-index FolderDirectories(folder, name)
+index FolderFolder(folder, name)
 
 entity PathABC extends git_ops::slice::EmbeddedSliceObjectABC:
     """
@@ -97,13 +98,13 @@ entity RootFolder extends git_ops::slice::SliceObjectABC, Folder:
     string root
 end
 
-index RootFolder(name, root)
+index RootFolder(root, name)
 
 implement File using std::none, parents
 
 implement Folder using std::none, parents
 
-implement FolderDirectories using parents
+implement FolderFolder using parents
 
 implement PathABC using std::none, parents
 

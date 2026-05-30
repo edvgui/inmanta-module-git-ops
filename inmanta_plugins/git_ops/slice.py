@@ -20,6 +20,7 @@ import contextlib
 import inspect
 import itertools
 import logging
+import sys
 import textwrap
 import typing
 from collections.abc import Generator, Mapping, Sequence
@@ -119,6 +120,17 @@ def to_inmanta_type(python_type: type[object]) -> inmanta_type.Type:
             to_inmanta_type(get_optional_type(python_type))
         )
 
+    # Literal type: the literal values themselves carry the type, so we
+    # translate it to the inmanta type of the underlying primitive value(s).
+    if typing_inspect.is_literal_type(python_type):
+        value_types = {type(value) for value in typing.get_args(python_type)}
+        if len(value_types) != 1:
+            raise ValueError(
+                f"Can not handle literal type {python_type} with values of "
+                f"mixed types {value_types}"
+            )
+        return to_inmanta_type(value_types.pop())
+
     # Lists and dicts
     if typing_inspect.is_generic_type(python_type):
         origin = typing.get_origin(python_type)
@@ -152,6 +164,164 @@ def to_inmanta_type(python_type: type[object]) -> inmanta_type.Type:
         return inmanta_type.Integer()
 
     raise ValueError(f"Can not handle type {python_type}")
+
+
+# Cache for the synthetic entity schemas representing discriminated unions.
+# Keyed by (module name, union name) to support recursive type definitions.
+_UNION_SCHEMA_CACHE: dict[tuple[str, str], "SliceEntitySchema"] = {}
+
+
+def resolve_forward_reference(
+    annotation: object, owner_cls: type
+) -> tuple[object, str | None]:
+    """
+    Resolve a (possibly) forward referenced annotation against the module in
+    which the owner class is defined.  Return the resolved value together with
+    the name of the reference when it was a forward reference.
+
+    :param annotation: The annotation to resolve, either a concrete value, a
+        string or a typing.ForwardRef.
+    :param owner_cls: The class on which the annotation is defined, used to
+        locate the module namespace.
+    """
+    name: str | None = None
+    if isinstance(annotation, str):
+        name = annotation
+    elif isinstance(annotation, typing.ForwardRef):
+        name = annotation.__forward_arg__
+
+    if name is None:
+        return annotation, None
+
+    module = sys.modules[owner_cls.__module__]
+    return getattr(module, name, None), name
+
+
+def discriminated_union(
+    annotation: object, owner_cls: type, *, fallback_name: str | None
+) -> tuple[str, str, Sequence[type]] | None:
+    """
+    If the given annotation is a discriminated union (a typing.Annotated union
+    carrying a pydantic discriminator), return the name of the union, the name
+    of the discriminator attribute and the sequence of member classes.
+    Otherwise return None.
+
+    :param annotation: The (resolved) annotation to inspect.
+    :param owner_cls: The class on which the annotation is defined.
+    :param fallback_name: The name to use for the union if it can not be
+        derived from a forward reference (e.g. the relation attribute name).
+    """
+    resolved, name = resolve_forward_reference(annotation, owner_cls)
+    if name is None:
+        name = fallback_name
+
+    metadata = getattr(resolved, "__metadata__", None)
+    if not metadata:
+        return None
+
+    discriminator: str | None = None
+    for meta in metadata:
+        discriminator = getattr(meta, "discriminator", None) or discriminator
+
+    if discriminator is None or name is None:
+        return None
+
+    union_type = typing.get_args(resolved)[0]
+    members = [
+        member
+        for member in typing.get_args(union_type)
+        if inspect.isclass(member) and issubclass(member, EmbeddedSliceObjectABC)
+    ]
+    if not members:
+        return None
+
+    return name, discriminator, members
+
+
+def union_schema(
+    name: str,
+    discriminator: str,
+    members: Sequence[type],
+    owner_cls: type,
+) -> "SliceEntitySchema":
+    """
+    Build (or return from cache) the synthetic entity schema representing a
+    discriminated union.  The union becomes a base entity defining the
+    discriminator attribute, and each member is registered as a sub entity
+    extending it.
+
+    :param name: The name of the union entity.
+    :param discriminator: The name of the discriminator attribute.
+    :param members: The member classes of the union.
+    :param owner_cls: The class defining the relation towards the union, used
+        to locate the module in which the union entity lives.
+    """
+    path = owner_cls.__module__.split(".")[1:]
+    key = (owner_cls.__module__, name)
+    if key in _UNION_SCHEMA_CACHE:
+        return _UNION_SCHEMA_CACHE[key]
+
+    # The discriminator attribute takes whatever primitive type the literal
+    # values of its members have.
+    discriminator_field = members[0].model_fields[discriminator]
+
+    schema = SliceEntitySchema(
+        name=name,
+        keys=members[0].keys,
+        path=path,
+        base_entities=[],
+        sub_entities=[],
+        description=f"Base entity for the members of the {name} discriminated union.",
+        parent_entities=[],
+        embedded_entities=[],
+        attributes=[
+            SliceEntityAttributeSchema(
+                name=discriminator,
+                description=discriminator_field.description,
+                inmanta_type=to_inmanta_type(type(discriminator_field.default)),
+            )
+        ],
+        discriminator=discriminator,
+    )
+    _UNION_SCHEMA_CACHE[key] = schema
+
+    for member in members:
+        member_schema = member.entity_schema()
+        member_schema.discriminator_value = member.model_fields[discriminator].default
+        if schema not in member_schema.base_entities:
+            member_schema.base_entities = [*member_schema.base_entities, schema]
+        for attr in member_schema.attributes:
+            if attr.name == discriminator:
+                attr.is_discriminator = True
+        schema.sub_entities.append(member_schema)
+
+    return schema
+
+
+def relation_target_schema(
+    element: object, owner_cls: type, *, fallback_name: str | None = None
+) -> "SliceEntitySchema | None":
+    """
+    Resolve the entity schema a relation points to, for a single element type.
+    This handles both a direct embedded slice class and a discriminated union
+    of embedded slice classes.  Return None if the element is not a relation
+    target.
+
+    :param element: The element type of the relation (the class, the forward
+        reference or the discriminated union annotation).
+    :param owner_cls: The class on which the relation is defined.
+    :param fallback_name: The name to use for a discriminated union when its
+        name can not be derived from a forward reference.
+    """
+    union = discriminated_union(element, owner_cls, fallback_name=fallback_name)
+    if union is not None:
+        return union_schema(*union, owner_cls)
+
+    resolved, _ = resolve_forward_reference(element, owner_cls)
+    if inspect.isclass(resolved) and issubclass(resolved, EmbeddedSliceObjectABC):
+        return resolved.entity_schema()
+
+    return None
 
 
 @dataclass(kw_only=True)
@@ -207,11 +377,15 @@ class SliceEntityAttributeSchema:
         there is any.
     :attr inmanta_type: The type of the attribute, translated into
         the inmanta type system.
+    :attr is_discriminator: When True, the attribute is the discriminator
+        of a discriminated union.  On a member of the union, the attribute
+        carries a fixed value taken from the entity's ``discriminator_value``.
     """
 
     name: str
     description: str | None
     inmanta_type: inmanta_type.Type
+    is_discriminator: bool = False
 
 
 @dataclass(kw_only=True)
@@ -231,6 +405,12 @@ class SliceEntitySchema:
         entity, if there is any.
     :attr embedded_entities: A list of relations towards other slice entities.
     :attr attributes: A list of attributes defined on the entity.
+    :attr discriminator: When this entity is the base of a discriminated union,
+        the name of the attribute whose value identifies the concrete sub
+        entity to use for a given instance.
+    :attr discriminator_value: When this entity is part of a discriminated
+        union, the fixed value its discriminator attribute takes for instances
+        of this concrete entity.
     """
 
     name: str
@@ -243,13 +423,53 @@ class SliceEntitySchema:
     embedded_entities: Sequence[SliceEntityRelationSchema]
     attributes: Sequence[SliceEntityAttributeSchema]
     embedded_slice: bool = True
+    discriminator: str | None = None
+    discriminator_value: object | None = None
+
+    def resolve(self, instance: dict) -> "SliceEntitySchema":
+        """
+        Resolve the concrete entity schema matching the given instance.  For a
+        regular entity this is the entity itself.  For the base of a
+        discriminated union, the sub entity whose discriminator value matches
+        the one carried by the instance is returned.
+
+        :param instance: The attributes dict of the instance to resolve.
+        """
+        if self.discriminator is None:
+            return self
+
+        value = instance.get(self.discriminator)
+        for sub_entity in self.sub_entities:
+            if sub_entity.discriminator_value == value:
+                return sub_entity
+
+        raise ValueError(
+            f"No sub entity of {self.name} matches the discriminator "
+            f"{self.discriminator}={value!r}"
+        )
 
     def instance_identity(self, instance: dict) -> Sequence[tuple[str, object]]:
         """
         Calculate the identity of an instance of this type, based on the keys
-        defined on this type.
+        defined on this type.  When the entity is a member of a discriminated
+        union, the discriminator is prepended to the identity so that two
+        instances sharing the same keys but belonging to different concrete
+        sub entities do not collide.
         """
-        return tuple((k, str(instance[k])) for k in self.keys)
+        identity: list[tuple[str, object]] = []
+        if self.discriminator_value is not None:
+            discriminator = next(
+                (
+                    base.discriminator
+                    for base in self.base_entities
+                    if base.discriminator is not None
+                ),
+                None,
+            )
+            if discriminator is not None:
+                identity.append((discriminator, str(instance[discriminator])))
+        identity.extend((k, str(instance[k])) for k in self.keys)
+        return tuple(identity)
 
     def all_attributes(self) -> Sequence[SliceEntityAttributeSchema]:
         """
@@ -302,14 +522,27 @@ class SliceEntitySchema:
         Returns True if this entity schema is referenced via relations by more
         than one parent slice.  If it is the case, the generator will need to
         generate a dedicated entity for each relation.
+
+        When this schema is a member of a discriminated union, the parents of
+        the union base are counted as additional parent contexts: the member
+        inherits the parent relation of the union, so being part of a union
+        adds one parent context to the count.
         """
-        all_parents = self.all_parents()
-        try:
-            next(all_parents)
-            next(all_parents)
-            return True
-        except StopIteration:
-            return False
+        count = 0
+        for _ in self.all_parents():
+            count += 1
+            if count > 1:
+                return True
+
+        if self.discriminator_value is not None:
+            union_base = next(
+                (base for base in self.base_entities if base.discriminator is not None),
+                None,
+            )
+            if union_base is not None:
+                count += len(union_base.parent_entities)
+
+        return count > 1
 
 
 def docstring(c: type) -> str | None:
@@ -427,14 +660,13 @@ class EmbeddedSliceObjectABC(pydantic.BaseModel):
                 and origin in [Sequence, list, typing.Sequence]
                 and (args := typing.get_args(python_type)) is not None
             ):
-                if inspect.isclass(args[0]) and issubclass(
-                    args[0], EmbeddedSliceObjectABC
-                ):
+                target = relation_target_schema(args[0], cls, fallback_name=attribute)
+                if target is not None:
                     embedded_entities.append(
                         SliceEntityRelationSchema(
                             name=attribute,
                             description=info.description,
-                            entity=args[0].entity_schema(),
+                            entity=target,
                             cardinality_min=0,
                             cardinality_max=None,
                         )
@@ -444,14 +676,13 @@ class EmbeddedSliceObjectABC(pydantic.BaseModel):
             # Optional relation
             with contextlib.suppress(ValueError):
                 optional = get_optional_type(python_type)
-                if inspect.isclass(optional) and issubclass(
-                    optional, EmbeddedSliceObjectABC
-                ):
+                target = relation_target_schema(optional, cls, fallback_name=attribute)
+                if target is not None:
                     embedded_entities.append(
                         SliceEntityRelationSchema(
                             name=attribute,
                             description=info.description,
-                            entity=optional.entity_schema(),
+                            entity=target,
                             cardinality_min=0,
                             cardinality_max=1,
                         )
@@ -459,14 +690,13 @@ class EmbeddedSliceObjectABC(pydantic.BaseModel):
                     continue
 
             # Required relation
-            if inspect.isclass(python_type) and issubclass(
-                python_type, EmbeddedSliceObjectABC
-            ):
+            target = relation_target_schema(python_type, cls, fallback_name=attribute)
+            if target is not None:
                 embedded_entities.append(
                     SliceEntityRelationSchema(
                         name=attribute,
                         description=info.description,
-                        entity=python_type.entity_schema(),
+                        entity=target,
                         cardinality_min=1,
                         cardinality_max=1,
                     )

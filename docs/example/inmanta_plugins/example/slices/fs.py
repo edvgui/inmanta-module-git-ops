@@ -54,6 +54,7 @@ class File(PathABC):
     A text file in a folder, with its textual content.
     """
 
+    type: typing.Literal["file"] = "file"
     content: str = pydantic.Field(
         default="", description="The textual content of the file."
     )
@@ -69,13 +70,14 @@ class Folder(PathABC):
     A folder in the filesystem tree, containing files and other folders.
     """
 
-    files: Sequence[File] = pydantic.Field(
-        default_factory=list, description="A list of files to manage in the folder."
-    )
-    directories: Sequence["Folder"] = pydantic.Field(
+    type: typing.Literal["folder"] = "folder"
+    content: Sequence["FolderContent"] = pydantic.Field(
         default_factory=list,
-        description="A list of folder to manage within this folder.",
+        description="A list of files and folders to manage within this folder.",
     )
+
+
+FolderContent = typing.Annotated[Folder | File, pydantic.Field(discriminator="type")]
 
 
 class RootFolder(slice.SliceObjectABC, Folder):

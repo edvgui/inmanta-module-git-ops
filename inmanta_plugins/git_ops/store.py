@@ -1083,6 +1083,11 @@ def merge_attributes(
         "path": str(path),
     }
 
+    # When the schema is the base of a discriminated union, resolve the
+    # concrete sub entity matching this instance so that we merge all of its
+    # attributes and relations, and not only the ones of the union base.
+    schema = schema.resolve(current if current else typing.cast(dict, previous))
+
     # Go over all attributes, the merged value will always be the value
     # from the current
     for attribute in schema.all_attributes():
@@ -1151,13 +1156,18 @@ def merge_attributes(
                     raise ValueError()
             continue
 
-        # Relation, attribute should be a list, and should be merged
+        # Relation, attribute should be a list, and should be merged.  For a
+        # discriminated union, resolve each item to its concrete sub entity so
+        # that the identity includes the discriminator.
+        def identity(value: dict) -> Sequence[tuple[str, object]]:
+            return relation.entity.resolve(value).instance_identity(value)
+
         current_values = {
-            relation.entity.instance_identity(current_value): current_value
+            identity(current_value): current_value
             for current_value in typing.cast(list[dict], current[relation.name])
         }
         previous_values = {
-            relation.entity.instance_identity(previous_value): previous_value
+            identity(previous_value): previous_value
             for previous_value in typing.cast(
                 list[dict], previous[relation.name] if previous is not None else []
             )
@@ -1166,18 +1176,17 @@ def merge_attributes(
         # Gather the identities of all the previous and current embedded entities
         # without losing the order
         all_identities = [
-            relation.entity.instance_identity(current_value)
+            identity(current_value)
             for current_value in typing.cast(list[dict], current[relation.name])
         ]
         if previous is not None:
             all_identities.extend(
                 [
-                    identity
+                    key
                     for previous_value in typing.cast(
                         list[dict], previous[relation.name]
                     )
-                    if (identity := relation.entity.instance_identity(previous_value))
-                    not in current_values
+                    if (key := identity(previous_value)) not in current_values
                 ]
             )
 

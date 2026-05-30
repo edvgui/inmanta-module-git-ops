@@ -1,12 +1,12 @@
 # Changelog
 
-## v0.3.2 - ?
+## v0.4.0 - ?
 
+- Add support for polymorphism in embedded slice definition
 
 ## v0.3.1 - 2026-05-12
 
 - Fix initial compile of a store with registered migrations on a fresh active folder.
-
 
 ## v0.3.0 - 2026-05-10
 

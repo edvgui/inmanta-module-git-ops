@@ -40,27 +40,23 @@ def test_fs(project: Project, monkeypatch: pytest.MonkeyPatch) -> None:
     f1 = fs.RootFolder(
         root="/tmp",
         name="test1",
-        files=[
+        content=[
             fs.File(
                 name="a.txt",
                 content="a",
             ),
-        ],
-        directories=[
             fs.Folder(
                 name="b",
-                files=[
+                content=[
                     fs.File(
                         name="b.txt",
                         content="b",
                     ),
-                ],
-                directories=[
                     fs.Folder(
                         name="c",
                     ),
                 ],
-            )
+            ),
         ],
     )
     f1_path = fs.STORE.source_path / "f1.yaml"
@@ -89,7 +85,7 @@ def test_fs(project: Project, monkeypatch: pytest.MonkeyPatch) -> None:
     assert file_a.previous_content is None
 
     # Update the content of file a
-    f1.files[0].content = "aa"
+    f1.content[0].content = "aa"
     f1_path.write_text(yaml.safe_dump(f1.model_dump(mode="json")))
 
     # Add the slice to the active store
