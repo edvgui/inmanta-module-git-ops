@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.4.1 - ?
+
+
 ## v0.4.0 - 2026-05-30
 
 - Add support for polymorphism in embedded slice definition
