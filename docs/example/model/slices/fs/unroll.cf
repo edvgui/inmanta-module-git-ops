@@ -36,7 +36,7 @@ implementation construct_folder for FolderFactory:
 
     for item in self.attributes["content"]:
         if item["type"] == "folder":
-            FolderFactory(attributes=item, parent=root, root_folder=root)
+            FolderFactory(attributes=item, parent=folder, root_folder=self.root_folder)
         elif item["type"] == "file":
             File(
                 folder=folder,

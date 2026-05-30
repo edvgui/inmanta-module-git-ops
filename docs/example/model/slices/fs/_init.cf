@@ -36,14 +36,14 @@ entity Folder extends PathABC:
     """
     A folder in the filesystem tree, containing files and other folders.
 
-    :rel content: A list of folder to manage within this folder.
+    :rel content: A list of files and folders to manage within this folder.
     """
     string type = "folder"
 end
 
 Folder.content [0:] -- FolderContent.folder [1]
 """
-A list of folder to manage within this folder.
+A list of files and folders to manage within this folder.
 Peer relation: Relation to parent
 """
 
