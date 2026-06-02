@@ -588,15 +588,26 @@ class EmbeddedSliceObjectABC(pydantic.BaseModel):
     def scaffold(cls) -> dict:
         """
         Build a template attributes dict for this slice object.  The dict
-        contains all the required properties of the schema (those without
-        a default value), with a placeholder value the user must replace.
+        contains all the properties of the schema: the required ones (those
+        without a default value) get a placeholder value the user must
+        replace, the others are pre-filled with their default value.
         Mandatory relations towards embedded slice objects are scaffolded
-        recursively, any other value (primitive, list, union, ...) gets
-        the placeholder string.
+        recursively, any other required value (primitive, list, union, ...)
+        gets the placeholder string.
         """
         attributes: dict = {}
         for attribute, info in cls.model_fields.items():
+            if info.exclude_if is slice_update:
+                # Model-only attribute, it is not part of the slice source files
+                continue
+
             if not info.is_required():
+                # Optional attribute, pre-fill it with its default value
+                default = info.get_default(call_default_factory=True)
+                if isinstance(default, pydantic.BaseModel):
+                    with exclude_model_values():
+                        default = default.model_dump(mode="json")
+                attributes[attribute] = default
                 continue
 
             annotation = info.annotation

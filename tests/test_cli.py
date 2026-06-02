@@ -85,14 +85,20 @@ def test_project_slice_commands(tmp_path: pathlib.Path) -> None:
     assert json.loads(git_ops("slice", "list", "--format", "json")) == []
 
     # Scaffold a new fs slice, the created file contains a placeholder for
-    # each required property of the store schema.  The created path, printed
-    # to stdout, is relative to the directory the command is invoked from.
+    # each required property of the store schema, and the default value of
+    # the non-required ones.  The created path, printed to stdout, is
+    # relative to the directory the command is invoked from.
     created = git_ops("slice", "create", "--store", "fs", "--name", "test-folder")
     fs_source = project_path / "files" / "fs" / "test-folder.json"
     assert project_path / created.strip() == fs_source
     assert json.loads(fs_source.read_text()) == {
         "name": "<REPLACE_THIS>",
         "root": "<REPLACE_THIS>",
+        "permissions": "770",
+        "owner": None,
+        "group": None,
+        "type": "folder",
+        "content": [],
     }
 
     # Refuse to overwrite an existing source slice
@@ -126,12 +132,24 @@ def test_project_slice_commands(tmp_path: pathlib.Path) -> None:
     assert project_path / created.strip() == rec_source
     assert yaml.safe_load(rec_source.read_text()) == {
         "name": "<REPLACE_THIS>",
-        "embedded_required": {"name": "<REPLACE_THIS>"},
+        "description": None,
+        "unique_id": None,
+        "embedded_required": {
+            "name": "<REPLACE_THIS>",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        "embedded_optional": None,
+        "embedded_sequence": [],
     }
     rec_source.unlink()
 
     # Fill in the placeholders of the fs slice
-    fs_source.write_text(json.dumps({"name": "folder", "root": "/tmp"}))
+    attributes = json.loads(fs_source.read_text())
+    attributes["name"] = "folder"
+    attributes["root"] = "/tmp"
+    fs_source.write_text(json.dumps(attributes))
 
     # The slice now shows up in the list, with the version it would be
     # assigned during an update compile

@@ -882,9 +882,10 @@ class SliceStore[S: slice.SliceObjectABC]:
     def create_slice(self, name: str, *, extension: str = "json") -> SliceFile:
         """
         Scaffold a new source slice file for this store.  The file contains
-        all the required properties of the store's schema, with placeholder
-        values that the user must replace.  Refuse to create the slice if a
-        source slice with the same name already exists.
+        all the properties of the store's schema: the required ones with a
+        placeholder value that the user must replace, the others pre-filled
+        with their default value.  Refuse to create the slice if a source
+        slice with the same name already exists.
 
         :param name: The name of the slice to create, it becomes the name
             of the source file.

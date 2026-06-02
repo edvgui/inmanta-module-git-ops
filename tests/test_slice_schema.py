@@ -16,7 +16,7 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 
-from inmanta_plugins.example.slices.fs import RootFolder
+from inmanta_plugins.example.slices.fs import File, RootFolder
 from inmanta_plugins.example.slices.recursive import EmbeddedSlice, Slice
 from inmanta_plugins.example.slices.simple import Slice as SimpleSlice
 
@@ -93,16 +93,50 @@ def test_basics() -> None:
 
 
 def test_scaffold() -> None:
-    # The scaffold of a slice contains all its required properties (including
-    # the inherited ones), with a placeholder value
+    # The scaffold of a slice contains all its properties (including the
+    # inherited ones): the required ones with a placeholder value, the
+    # others pre-filled with their default value
     assert RootFolder.scaffold() == {
         "name": const.SLICE_PLACEHOLDER,
         "root": const.SLICE_PLACEHOLDER,
+        "permissions": "770",
+        "owner": None,
+        "group": None,
+        "type": "folder",
+        "content": [],
     }
-    assert SimpleSlice.scaffold() == {"name": const.SLICE_PLACEHOLDER}
+    assert SimpleSlice.scaffold() == {
+        "name": const.SLICE_PLACEHOLDER,
+        "description": None,
+        "unique_id": None,
+        "some_number": 0.0,
+        "some_flag": False,
+        "some_list": [],
+        "some_dict": {},
+    }
+
+    # Model-only attributes (such as previous_content) are not part of the
+    # scaffold, as they are not part of the slice source files
+    assert File.scaffold() == {
+        "name": const.SLICE_PLACEHOLDER,
+        "permissions": "770",
+        "owner": None,
+        "group": None,
+        "type": "file",
+        "content": "",
+    }
 
     # Mandatory embedded relations are scaffolded recursively
     assert Slice.scaffold() == {
         "name": const.SLICE_PLACEHOLDER,
-        "embedded_required": {"name": const.SLICE_PLACEHOLDER},
+        "description": None,
+        "unique_id": None,
+        "embedded_required": {
+            "name": const.SLICE_PLACEHOLDER,
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        "embedded_optional": None,
+        "embedded_sequence": [],
     }

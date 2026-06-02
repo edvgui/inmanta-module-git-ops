@@ -62,6 +62,8 @@ folder.
   `root` for the `fs` store) plus mandatory nested relations (cardinality_min ≥ 1).
   Placeholders should be obvious and self-describing (e.g. a sentinel string carrying
   the attribute's description) so the file does not silently validate with bogus data.
+  Non-required properties are included as well, pre-filled with their default value, so
+  the created file shows every available property.
 - The file is written into the store's source folder (`store.source_path`) under
   `<name>.<extension>`, with no version suffix.
 - The command should refuse to overwrite an existing source slice with the same name.

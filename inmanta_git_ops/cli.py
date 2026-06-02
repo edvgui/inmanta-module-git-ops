@@ -373,9 +373,10 @@ def create(
     """
     Scaffold a new source slice file for the given store.
 
-    The created file contains all the required properties of the store's schema,
-    with placeholder values that should be replaced by the user.  The path of the
-    created file is printed to stdout.
+    The created file contains all the properties of the store's schema: the
+    required ones with a placeholder value that should be replaced by the user,
+    the others pre-filled with their default value.  The path of the created
+    file is printed to stdout.
     """
     path = run_slice_command_compile(
         inmanta_compile_arg,
