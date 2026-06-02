@@ -79,6 +79,11 @@ def test_project_slice_commands(tmp_path: pathlib.Path) -> None:
             assert result.returncode != 0, result.stdout + result.stderr
         else:
             assert result.returncode == 0, result.stdout + result.stderr
+        if args[0] == "slice":
+            # The compile summary banner is dropped from the output of the
+            # slice commands
+            assert "SUCCESS" not in result.stderr, result.stderr
+            assert "FAILURE" not in result.stderr, result.stderr
         return result.stdout
 
     # No slices yet

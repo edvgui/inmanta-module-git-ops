@@ -21,15 +21,16 @@ import json
 import logging
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
-import typing
 from collections.abc import Mapping, Sequence
 
 import click
 import texttable
 
+from inmanta.const import ENVIRON_FORCE_TTY
 from inmanta.module import ModuleV2, Project
 from inmanta_git_ops import const
 from inmanta_plugins.git_ops.store import SLICE_STORE_REGISTRY
@@ -204,12 +205,27 @@ def project(inmanta_arg: list[str]) -> None:
     INMANTA_ARGS.extend(inmanta_arg)
 
 
+def inmanta_compile_command(inmanta_compile_arg: Sequence[str]) -> list[str]:
+    """
+    Construct the command line to run a compile on the current project.
+
+    :param inmanta_compile_arg: Additional arguments to pass to the inmanta
+        compile command.
+    """
+    return [
+        sys.executable,
+        "-m",
+        "inmanta.app",
+        *INMANTA_ARGS,
+        "compile",
+        *inmanta_compile_arg,
+    ]
+
+
 def run_compile(
     inmanta_compile_arg: Sequence[str],
     *,
     compile_mode: str,
-    env: Mapping[str, str] | None = None,
-    stdout: typing.IO | None = None,
 ) -> None:
     """
     Run a compile on the current project, in a subprocess, with the given
@@ -218,21 +234,11 @@ def run_compile(
     :param inmanta_compile_arg: Additional arguments to pass to the inmanta
         compile command.
     :param compile_mode: The compile mode the compile should run in.
-    :param env: Additional environment variables to pass to the compile.
-    :param stdout: Where to redirect the standard output of the compile.
     """
     subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "inmanta.app",
-            *INMANTA_ARGS,
-            "compile",
-            *inmanta_compile_arg,
-        ],
+        inmanta_compile_command(inmanta_compile_arg),
         check=True,
-        env={**os.environ, const.COMPILE_MODE_ENV_VAR: compile_mode, **(env or {})},
-        stdout=stdout,
+        env={**os.environ, const.COMPILE_MODE_ENV_VAR: compile_mode},
     )
 
 
@@ -248,29 +254,66 @@ COMPILER_LOGGING_ENV_VARS = [
     "INMANTA_CONFIG_LOGGING_CONFIG_TMPL",
 ]
 
-# Logging configuration for the slice command compiles: send all the compiler
-# logs to stderr, so that the compiler doesn't log anything on stdout.  The
-# inmanta.logging logger is restricted to errors because it warns about the
-# default cli logging options it ignores when a logging config is provided.
-SLICE_COMPILE_LOGGING_CONFIG = """
-version: 1
-disable_existing_loggers: false
-formatters:
-  console:
-    format: "%(name)-25s%(levelname)-8s%(message)s"
-handlers:
-  console:
-    class: logging.StreamHandler
-    formatter: console
-    level: WARNING
-    stream: ext://sys.stderr
-loggers:
-  inmanta.logging:
-    level: ERROR
-root:
-  handlers: [console]
-  level: WARNING
-"""
+# Pattern matching the headers of the summary that the compiler prints at the
+# end of every compile, and which shouldn't be part of a slice command output.
+COMPILE_SUMMARY_HEADER_REGEX = re.compile(
+    r"=+ (SUCCESS|COMPILATION FAILURE|EXPORT FAILURE|EXCEPTION TRACE) =+"
+)
+ANSI_ESCAPE_SEQUENCE_REGEX = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def slice_compile_logging_config() -> str:
+    """
+    Build the logging configuration for the slice command compiles: all the
+    compiler logs are sent to stderr, so that the compiler doesn't log
+    anything on stdout.  The logs are colored, like the default console
+    logging of the compiler, when stderr is a tty.  The inmanta.logging
+    logger is restricted to errors because it warns about the default cli
+    logging options it ignores when a logging config is provided.
+    """
+    on_tty = sys.stderr.isatty()
+    return json.dumps(
+        {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "formatters": {
+                "console": {
+                    "()": "inmanta.logging.MultiLineFormatter",
+                    "fmt": (
+                        "%(log_color)s%(name)-15s%(levelname)-8s%(reset)s%(blue)s%(message)s"
+                        if on_tty
+                        else "%(name)-15s%(levelname)-8s%(message)s"
+                    ),
+                    "log_colors": (
+                        {
+                            "DEBUG": "cyan",
+                            "INFO": "green",
+                            "WARNING": "yellow",
+                            "ERROR": "red",
+                            "CRITICAL": "red",
+                        }
+                        if on_tty
+                        else None
+                    ),
+                    "reset": on_tty,
+                    "no_color": not on_tty,
+                    "keep_logger_names": False,
+                }
+            },
+            "handlers": {
+                "console": {
+                    "class": "logging.StreamHandler",
+                    "formatter": "console",
+                    "level": "WARNING",
+                    "stream": "ext://sys.stderr",
+                }
+            },
+            "loggers": {
+                "inmanta.logging": {"level": "ERROR"},
+            },
+            "root": {"handlers": ["console"], "level": "WARNING"},
+        }
+    )
 
 
 def run_slice_command_compile(
@@ -281,9 +324,10 @@ def run_slice_command_compile(
 ) -> object:
     """
     Run a slice command compile on the current project.  The compiler is
-    configured to log to stderr, and any remaining output on stdout is
-    redirected to stderr too.  The result of the command, written to the
-    output file by the corresponding finalizer, is read back and returned.
+    configured to log to stderr, and any remaining compile output on stdout
+    is forwarded to stderr, without the compile summary banner.  The result
+    of the command, written to the output file by the corresponding
+    finalizer, is read back and returned.
 
     :param inmanta_compile_arg: Additional arguments to pass to the inmanta
         compile command.
@@ -292,22 +336,40 @@ def run_slice_command_compile(
     """
     with tempfile.TemporaryDirectory() as tmp_dir:
         output_file = pathlib.Path(tmp_dir) / "output.json"
-        compile_env = {**env, const.OUTPUT_FILE_ENV_VAR: str(output_file)}
+        compile_env = {
+            **os.environ,
+            const.COMPILE_MODE_ENV_VAR: compile_mode,
+            **env,
+            const.OUTPUT_FILE_ENV_VAR: str(output_file),
+        }
         if not any(var in os.environ for var in COMPILER_LOGGING_ENV_VARS):
             # The user didn't configure the compiler logging, make sure the
             # compiler doesn't log anything on stdout
-            compile_env[COMPILER_LOGGING_CONTENT_ENV_VAR] = SLICE_COMPILE_LOGGING_CONFIG
-        try:
-            run_compile(
-                inmanta_compile_arg,
-                compile_mode=compile_mode,
-                env=compile_env,
-                stdout=sys.stderr,
+            compile_env[COMPILER_LOGGING_CONTENT_ENV_VAR] = (
+                slice_compile_logging_config()
             )
-        except subprocess.CalledProcessError as e:
-            raise click.ClickException(
-                f"The compile failed (see logs above): {e}"
-            ) from e
+        if sys.stderr.isatty():
+            # The compile output goes through a pipe, let the compiler know
+            # its output still ends up on a tty, so it keeps its colors
+            compile_env[ENVIRON_FORCE_TTY] = "true"
+
+        with subprocess.Popen(
+            inmanta_compile_command(inmanta_compile_arg),
+            env=compile_env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        ) as process:
+            assert process.stdout is not None
+            for line in process.stdout:
+                plain_line = ANSI_ESCAPE_SEQUENCE_REGEX.sub("", line).strip()
+                if COMPILE_SUMMARY_HEADER_REGEX.fullmatch(plain_line):
+                    # Drop the compile summary banner from the output
+                    continue
+                sys.stderr.write(line)
+
+        if process.returncode != 0:
+            raise click.ClickException("The compile failed (see logs above)")
 
         if not output_file.exists():
             raise click.ClickException(
