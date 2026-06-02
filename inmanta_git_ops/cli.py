@@ -236,6 +236,43 @@ def run_compile(
     )
 
 
+# Environment variables, defined by inmanta-core, with which the user can
+# set the logging configuration of the compiler.
+COMPILER_LOGGING_CONTENT_ENV_VAR = "INMANTA_LOGGING_COMPILER_CONTENT"
+COMPILER_LOGGING_ENV_VARS = [
+    "INMANTA_LOGGING_COMPILER",
+    COMPILER_LOGGING_CONTENT_ENV_VAR,
+    "INMANTA_LOGGING_COMPILER_TMPL",
+    "INMANTA_CONFIG_LOGGING_CONFIG",
+    "INMANTA_CONFIG_LOGGING_CONFIG_CONTENT",
+    "INMANTA_CONFIG_LOGGING_CONFIG_TMPL",
+]
+
+# Logging configuration for the slice command compiles: send all the compiler
+# logs to stderr, so that the compiler doesn't log anything on stdout.  The
+# inmanta.logging logger is restricted to errors because it warns about the
+# default cli logging options it ignores when a logging config is provided.
+SLICE_COMPILE_LOGGING_CONFIG = """
+version: 1
+disable_existing_loggers: false
+formatters:
+  console:
+    format: "%(name)-25s%(levelname)-8s%(message)s"
+handlers:
+  console:
+    class: logging.StreamHandler
+    formatter: console
+    level: WARNING
+    stream: ext://sys.stderr
+loggers:
+  inmanta.logging:
+    level: ERROR
+root:
+  handlers: [console]
+  level: WARNING
+"""
+
+
 def run_slice_command_compile(
     inmanta_compile_arg: Sequence[str],
     *,
@@ -243,10 +280,10 @@ def run_slice_command_compile(
     env: Mapping[str, str],
 ) -> object:
     """
-    Run a slice command compile on the current project.  The output of the
-    compile is redirected to stderr, and the result of the command, written
-    to the output file by the corresponding finalizer, is read back and
-    returned.
+    Run a slice command compile on the current project.  The compiler is
+    configured to log to stderr, and any remaining output on stdout is
+    redirected to stderr too.  The result of the command, written to the
+    output file by the corresponding finalizer, is read back and returned.
 
     :param inmanta_compile_arg: Additional arguments to pass to the inmanta
         compile command.
@@ -255,11 +292,16 @@ def run_slice_command_compile(
     """
     with tempfile.TemporaryDirectory() as tmp_dir:
         output_file = pathlib.Path(tmp_dir) / "output.json"
+        compile_env = {**env, const.OUTPUT_FILE_ENV_VAR: str(output_file)}
+        if not any(var in os.environ for var in COMPILER_LOGGING_ENV_VARS):
+            # The user didn't configure the compiler logging, make sure the
+            # compiler doesn't log anything on stdout
+            compile_env[COMPILER_LOGGING_CONTENT_ENV_VAR] = SLICE_COMPILE_LOGGING_CONFIG
         try:
             run_compile(
                 inmanta_compile_arg,
                 compile_mode=compile_mode,
-                env={**env, const.OUTPUT_FILE_ENV_VAR: str(output_file)},
+                env=compile_env,
                 stdout=sys.stderr,
             )
         except subprocess.CalledProcessError as e:
