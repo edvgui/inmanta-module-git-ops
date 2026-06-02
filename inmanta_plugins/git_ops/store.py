@@ -24,7 +24,7 @@ import pathlib
 import re
 import typing
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 import pydantic
 import yaml
@@ -543,15 +543,23 @@ class SliceStore[S: slice.SliceObjectABC]:
 
         active_slices = self.load_active_slices()
 
+        # In these compile modes, the current version of the slices is read
+        # from the source folder, like for an update compile
+        source_view = const.COMPILE_MODE in [
+            const.COMPILE_UPDATE,
+            const.COMPILE_SYNC,
+            const.COMPILE_SLICE_LIST,
+            const.COMPILE_SLICE_INSPECT,
+        ]
+
         slices = set(active_slices.keys())
-        if const.COMPILE_MODE in [const.COMPILE_UPDATE, const.COMPILE_SYNC]:
-            # Activating compile, we need to look at the source of the
-            # slices too
+        if source_view:
+            # We need to look at the source of the slices too
             slices |= self.load_source_slices().keys()
 
         self.current_slices: dict[str, Slice] = {}
         for s in slices:
-            if const.COMPILE_MODE in [const.COMPILE_UPDATE, const.COMPILE_SYNC]:
+            if source_view:
                 self.current_slices[s] = self.load_source_slices()[s]
             else:
                 self.current_slices[s] = self.get_latest_slice(s)
@@ -636,6 +644,11 @@ class SliceStore[S: slice.SliceObjectABC]:
         self.slices: dict[str, Slice] = {}
         for s, current in self.load_current_slices().items():
             if current.deleted:
+                if s not in previous_slices:
+                    # The slice never had any undeleted version, there is
+                    # nothing to delete, skip it
+                    continue
+
                 # We need to get the attributes of the last undeleted
                 # version, otherwise we don't know what we have to delete
                 attributes = merge_attributes(
@@ -866,6 +879,40 @@ class SliceStore[S: slice.SliceObjectABC]:
                 json.dumps(self.schema.model_json_schema(), indent=2)
             )
 
+    def create_slice(self, name: str, *, extension: str = "json") -> SliceFile:
+        """
+        Scaffold a new source slice file for this store.  The file contains
+        all the required properties of the store's schema, with placeholder
+        values that the user must replace.  Refuse to create the slice if a
+        source slice with the same name already exists.
+
+        :param name: The name of the slice to create, it becomes the name
+            of the source file.
+        :param extension: The extension (and format) of the created file.
+        """
+        if not name or name.startswith(".") or "/" in name or "@" in name:
+            raise ValueError(
+                f"Invalid slice name: {name!r}.  A slice name can not be empty, "
+                "start with a dot, or contain any '/' or '@' character."
+            )
+
+        source_slice_files = self.load_source_slice_files()
+        if name in source_slice_files:
+            raise ValueError(
+                f"A source slice named {name} already exists in store {self.name} "
+                f"at {source_slice_files[name].path}"
+            )
+
+        slice_file = SliceFile(
+            path=self.source_path / f"{name}.{extension}",
+            name=name,
+            version=None,
+            extension=extension,
+            schema=self.schema,
+        )
+        slice_file.write_raw(self.schema.scaffold())
+        return slice_file
+
     def clear(self) -> None:
         """
         Clear the cache of slices in memory.
@@ -1031,6 +1078,62 @@ def get_store(store_name: str) -> SliceStore[slice.SliceObjectABC]:
         )
 
     return SLICE_STORE_REGISTRY[store_name]
+
+
+def write_command_output(result: object) -> None:
+    """
+    Write the result of a slice command to the output file designated by
+    the cli process.  If no output file is set (manual compile), print the
+    result to stdout instead.
+    """
+    serialized = json.dumps(result, indent=2)
+    if const.OUTPUT_FILE is not None:
+        pathlib.Path(const.OUTPUT_FILE).write_text(serialized)
+    else:
+        print(serialized)
+
+
+@finalizer
+def run_slice_command() -> None:
+    """
+    At the end of the compile, if the compile was triggered by a
+    `git-ops project slice` command, execute the command logic and emit
+    its result.
+    """
+    if const.COMPILE_MODE not in const.COMPILE_SLICE_COMMANDS:
+        return
+
+    if const.COMPILE_MODE == const.COMPILE_SLICE_LIST:
+        # List the slices of one store, or of all the registered stores
+        stores = (
+            [get_store(const.SLICE_STORE)]
+            if const.SLICE_STORE is not None
+            else list(SLICE_STORE_REGISTRY.values())
+        )
+        write_command_output(
+            [
+                {k: v for k, v in asdict(s).items() if k != "attributes"}
+                for store in stores
+                for s in store.get_all_slices()
+            ]
+        )
+        return
+
+    # The create and inspect commands always target one specific slice
+    if const.SLICE_STORE is None or const.SLICE_NAME is None:
+        raise ValueError(
+            f"The {const.COMPILE_MODE} compile requires both {const.SLICE_STORE_ENV_VAR} "
+            f"and {const.SLICE_NAME_ENV_VAR} environment variables to be set"
+        )
+
+    store = get_store(const.SLICE_STORE)
+    if const.COMPILE_MODE == const.COMPILE_SLICE_CREATE:
+        slice_file = store.create_slice(
+            const.SLICE_NAME, extension=const.SLICE_EXTENSION
+        )
+        write_command_output(str(slice_file.path))
+    else:
+        write_command_output(asdict(store.get_one_slice(const.SLICE_NAME)))
 
 
 @finalizer

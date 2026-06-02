@@ -33,6 +33,7 @@ import typing_inspect
 from pydantic.json_schema import SkipJsonSchema
 
 import inmanta.ast.type as inmanta_type
+from inmanta_git_ops import const
 
 LOGGER = logging.getLogger(__name__)
 
@@ -582,6 +583,32 @@ class EmbeddedSliceObjectABC(pydantic.BaseModel):
         ),
         exclude_if=slice_update,
     )
+
+    @classmethod
+    def scaffold(cls) -> dict:
+        """
+        Build a template attributes dict for this slice object.  The dict
+        contains all the required properties of the schema (those without
+        a default value), with a placeholder value the user must replace.
+        Mandatory relations towards embedded slice objects are scaffolded
+        recursively, any other value (primitive, list, union, ...) gets
+        the placeholder string.
+        """
+        attributes: dict = {}
+        for attribute, info in cls.model_fields.items():
+            if not info.is_required():
+                continue
+
+            annotation = info.annotation
+            if inspect.isclass(annotation) and issubclass(
+                annotation, EmbeddedSliceObjectABC
+            ):
+                # Mandatory relation towards an embedded slice object
+                attributes[attribute] = annotation.scaffold()
+            else:
+                attributes[attribute] = const.SLICE_PLACEHOLDER
+
+        return attributes
 
     @classmethod
     def entity_schema(cls) -> SliceEntitySchema:

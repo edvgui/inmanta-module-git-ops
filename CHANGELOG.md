@@ -2,6 +2,7 @@
 
 ## v0.4.1 - ?
 
+- Add `git-ops project slice` command group to create, list and inspect the slices of a project.
 
 ## v0.4.0 - 2026-05-30
 

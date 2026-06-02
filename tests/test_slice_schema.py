@@ -16,7 +16,11 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 
+from inmanta_plugins.example.slices.fs import RootFolder
 from inmanta_plugins.example.slices.recursive import EmbeddedSlice, Slice
+from inmanta_plugins.example.slices.simple import Slice as SimpleSlice
+
+from inmanta_git_ops import const
 
 
 def test_basics() -> None:
@@ -86,3 +90,19 @@ def test_basics() -> None:
 
     # The embedded slice should extend the EmbeddedSliceObjectABC
     assert [b.name for b in embedded_schema.base_entities] == ["NamedSlice"]
+
+
+def test_scaffold() -> None:
+    # The scaffold of a slice contains all its required properties (including
+    # the inherited ones), with a placeholder value
+    assert RootFolder.scaffold() == {
+        "name": const.SLICE_PLACEHOLDER,
+        "root": const.SLICE_PLACEHOLDER,
+    }
+    assert SimpleSlice.scaffold() == {"name": const.SLICE_PLACEHOLDER}
+
+    # Mandatory embedded relations are scaffolded recursively
+    assert Slice.scaffold() == {
+        "name": const.SLICE_PLACEHOLDER,
+        "embedded_required": {"name": const.SLICE_PLACEHOLDER},
+    }
