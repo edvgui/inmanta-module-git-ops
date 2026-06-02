@@ -16,6 +16,7 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 
+import typing
 from collections.abc import Sequence
 
 import pydantic
@@ -175,4 +176,36 @@ def test_scaffold_embedded_defaults() -> None:
         "replicas": [{"image": "alpine", "cpus": 1.0}],
         # A default that can not be constructed falls back to the placeholder
         "invalid": const.SLICE_PLACEHOLDER,
+    }
+
+
+def test_scaffold_discriminated_union() -> None:
+    class A(slice.EmbeddedSliceObjectABC):
+        type: typing.Literal["a"] = "a"
+        required_value: str
+
+    class B(slice.EmbeddedSliceObjectABC):
+        type: typing.Literal["b"] = "b"
+
+    AB = typing.Annotated[A | B, pydantic.Field(discriminator="type")]
+
+    class Root(slice.SliceObjectABC):
+        name: str
+        item: AB
+        fallback: AB = pydantic.Field(default_factory=B)
+        broken: AB = pydantic.Field(default_factory=A)
+        items: Sequence[AB] = pydantic.Field(default_factory=lambda: [B()])
+
+    assert Root.scaffold() == {
+        "name": const.SLICE_PLACEHOLDER,
+        # A required union relation gets the placeholder: the scaffold can
+        # not pick a union member for the user
+        "item": const.SLICE_PLACEHOLDER,
+        # Union members in a default value are serialized like the slice
+        # files, with their discriminator
+        "fallback": {"type": "b"},
+        "items": [{"type": "b"}],
+        # A default union member that can not be constructed falls back to
+        # the placeholder
+        "broken": const.SLICE_PLACEHOLDER,
     }
