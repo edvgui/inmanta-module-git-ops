@@ -16,11 +16,15 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 
+from collections.abc import Sequence
+
+import pydantic
 from inmanta_plugins.example.slices.fs import File, RootFolder
 from inmanta_plugins.example.slices.recursive import EmbeddedSlice, Slice
 from inmanta_plugins.example.slices.simple import Slice as SimpleSlice
 
 from inmanta_git_ops import const
+from inmanta_plugins.git_ops import slice
 
 
 def test_basics() -> None:
@@ -139,4 +143,36 @@ def test_scaffold() -> None:
         },
         "embedded_optional": None,
         "embedded_sequence": [],
+    }
+
+
+def test_scaffold_embedded_defaults() -> None:
+    class Container(slice.EmbeddedSliceObjectABC):
+        image: str
+        cpus: float = 1.0
+
+    class Service(slice.SliceObjectABC):
+        name: str
+        container: Container = pydantic.Field(default_factory=Container)
+        replicas: Sequence[Container] = pydantic.Field(
+            default_factory=lambda: [Container(image="alpine")]
+        )
+        invalid: Sequence[Container] = pydantic.Field(
+            default_factory=lambda: [Container()]
+        )
+
+    assert Service.scaffold() == {
+        "name": const.SLICE_PLACEHOLDER,
+        # A mandatory embedded relation is scaffolded recursively even when
+        # the field has a default: the factory can not construct the embedded
+        # object as it has required properties of its own
+        "container": {
+            "image": const.SLICE_PLACEHOLDER,
+            "cpus": 1.0,
+        },
+        # Embedded objects in a default value are serialized like the slice
+        # files, without the model-only attributes
+        "replicas": [{"image": "alpine", "cpus": 1.0}],
+        # A default that can not be constructed falls back to the placeholder
+        "invalid": const.SLICE_PLACEHOLDER,
     }
