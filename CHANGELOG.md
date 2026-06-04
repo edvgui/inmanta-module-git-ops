@@ -1,8 +1,9 @@
 # Changelog
 
-## v0.4.1 - ?
+## v0.5.0 - ?
 
 - Add `git-ops project slice` command group to create, list and inspect the slices of a project.
+- Address some compiler warnings in plugin annotations
 
 ## v0.4.0 - 2026-05-30
 

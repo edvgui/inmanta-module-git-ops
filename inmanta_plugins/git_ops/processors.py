@@ -116,7 +116,7 @@ def used_values(
 
 @plugin
 def join_used_values(
-    *used_values: typing.Annotated[typing.Callable[[], Collection[object]], object],
+    *used_values: typing.Annotated[typing.Callable[[], Collection[object]], ModelType["any"]],
 ) -> typing.Annotated[typing.Callable[[], Collection[object]], ModelType["any"]]:
     """
     Join multiple used values collectors into one.
@@ -135,7 +135,7 @@ def unique_integer(
     path: str,
     previous_value: int | None = None,
     *,
-    used_integers: typing.Annotated[typing.Callable[[], Collection[int]], object],
+    used_integers: typing.Annotated[typing.Callable[[], Collection[int]], ModelType["any"]],
     range_start: int = 0,
     range_stop: int = 1000,
     refresh: bool = False,
