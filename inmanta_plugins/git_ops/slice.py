@@ -33,6 +33,7 @@ import typing_inspect
 from pydantic.json_schema import SkipJsonSchema
 
 import inmanta.ast.type as inmanta_type
+from inmanta_git_ops import const
 
 LOGGER = logging.getLogger(__name__)
 
@@ -582,6 +583,55 @@ class EmbeddedSliceObjectABC(pydantic.BaseModel):
         ),
         exclude_if=slice_update,
     )
+
+    @classmethod
+    def scaffold(cls) -> dict:
+        """
+        Build a template attributes dict for this slice object.  The dict
+        contains all the properties of the schema: the required ones (those
+        without a default value) get a placeholder value the user must
+        replace, the others are pre-filled with their default value.
+        Mandatory relations towards embedded slice objects (single embedded
+        slice annotation, even when the field has a default) are scaffolded
+        recursively, any other required value (primitive, list, union, ...)
+        gets the placeholder string.
+        """
+        attributes: dict = {}
+        for attribute, info in cls.model_fields.items():
+            if info.exclude_if is slice_update:
+                # Model-only attribute, it is not part of the slice source files
+                continue
+
+            annotation = info.annotation
+            if inspect.isclass(annotation) and issubclass(
+                annotation, EmbeddedSliceObjectABC
+            ):
+                # Mandatory relation towards an embedded slice object, always
+                # scaffold it recursively: even when the field has a default,
+                # the embedded object may have required properties of its own
+                attributes[attribute] = annotation.scaffold()
+                continue
+
+            if not info.is_required():
+                # Optional attribute, pre-fill it with its default value
+                try:
+                    default = info.get_default(call_default_factory=True)
+                except pydantic.ValidationError:
+                    # The default can not be constructed (e.g. a factory
+                    # building an embedded object with required properties),
+                    # the user will have to provide the value
+                    attributes[attribute] = const.SLICE_PLACEHOLDER
+                    continue
+
+                with exclude_model_values():
+                    attributes[attribute] = pydantic.TypeAdapter(
+                        annotation
+                    ).dump_python(default, mode="json")
+                continue
+
+            attributes[attribute] = const.SLICE_PLACEHOLDER
+
+        return attributes
 
     @classmethod
     def entity_schema(cls) -> SliceEntitySchema:

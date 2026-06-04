@@ -16,7 +16,16 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 
+import typing
+from collections.abc import Sequence
+
+import pydantic
+from inmanta_plugins.example.slices.fs import File, RootFolder
 from inmanta_plugins.example.slices.recursive import EmbeddedSlice, Slice
+from inmanta_plugins.example.slices.simple import Slice as SimpleSlice
+
+from inmanta_git_ops import const
+from inmanta_plugins.git_ops import slice
 
 
 def test_basics() -> None:
@@ -86,3 +95,117 @@ def test_basics() -> None:
 
     # The embedded slice should extend the EmbeddedSliceObjectABC
     assert [b.name for b in embedded_schema.base_entities] == ["NamedSlice"]
+
+
+def test_scaffold() -> None:
+    # The scaffold of a slice contains all its properties (including the
+    # inherited ones): the required ones with a placeholder value, the
+    # others pre-filled with their default value
+    assert RootFolder.scaffold() == {
+        "name": const.SLICE_PLACEHOLDER,
+        "root": const.SLICE_PLACEHOLDER,
+        "permissions": "770",
+        "owner": None,
+        "group": None,
+        "type": "folder",
+        "content": [],
+    }
+    assert SimpleSlice.scaffold() == {
+        "name": const.SLICE_PLACEHOLDER,
+        "description": None,
+        "unique_id": None,
+        "some_number": 0.0,
+        "some_flag": False,
+        "some_list": [],
+        "some_dict": {},
+    }
+
+    # Model-only attributes (such as previous_content) are not part of the
+    # scaffold, as they are not part of the slice source files
+    assert File.scaffold() == {
+        "name": const.SLICE_PLACEHOLDER,
+        "permissions": "770",
+        "owner": None,
+        "group": None,
+        "type": "file",
+        "content": "",
+    }
+
+    # Mandatory embedded relations are scaffolded recursively
+    assert Slice.scaffold() == {
+        "name": const.SLICE_PLACEHOLDER,
+        "description": None,
+        "unique_id": None,
+        "embedded_required": {
+            "name": const.SLICE_PLACEHOLDER,
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        "embedded_optional": None,
+        "embedded_sequence": [],
+    }
+
+
+def test_scaffold_embedded_defaults() -> None:
+    class Container(slice.EmbeddedSliceObjectABC):
+        image: str
+        cpus: float = 1.0
+
+    class Service(slice.SliceObjectABC):
+        name: str
+        container: Container = pydantic.Field(default_factory=Container)
+        replicas: Sequence[Container] = pydantic.Field(
+            default_factory=lambda: [Container(image="alpine")]
+        )
+        invalid: Sequence[Container] = pydantic.Field(
+            default_factory=lambda: [Container()]
+        )
+
+    assert Service.scaffold() == {
+        "name": const.SLICE_PLACEHOLDER,
+        # A mandatory embedded relation is scaffolded recursively even when
+        # the field has a default: the factory can not construct the embedded
+        # object as it has required properties of its own
+        "container": {
+            "image": const.SLICE_PLACEHOLDER,
+            "cpus": 1.0,
+        },
+        # Embedded objects in a default value are serialized like the slice
+        # files, without the model-only attributes
+        "replicas": [{"image": "alpine", "cpus": 1.0}],
+        # A default that can not be constructed falls back to the placeholder
+        "invalid": const.SLICE_PLACEHOLDER,
+    }
+
+
+def test_scaffold_discriminated_union() -> None:
+    class A(slice.EmbeddedSliceObjectABC):
+        type: typing.Literal["a"] = "a"
+        required_value: str
+
+    class B(slice.EmbeddedSliceObjectABC):
+        type: typing.Literal["b"] = "b"
+
+    AB = typing.Annotated[A | B, pydantic.Field(discriminator="type")]
+
+    class Root(slice.SliceObjectABC):
+        name: str
+        item: AB
+        fallback: AB = pydantic.Field(default_factory=B)
+        broken: AB = pydantic.Field(default_factory=A)
+        items: Sequence[AB] = pydantic.Field(default_factory=lambda: [B()])
+
+    assert Root.scaffold() == {
+        "name": const.SLICE_PLACEHOLDER,
+        # A required union relation gets the placeholder: the scaffold can
+        # not pick a union member for the user
+        "item": const.SLICE_PLACEHOLDER,
+        # Union members in a default value are serialized like the slice
+        # files, with their discriminator
+        "fallback": {"type": "b"},
+        "items": [{"type": "b"}],
+        # A default union member that can not be constructed falls back to
+        # the placeholder
+        "broken": const.SLICE_PLACEHOLDER,
+    }

@@ -21,12 +21,16 @@ import json
 import logging
 import os
 import pathlib
+import re
 import subprocess
 import sys
+import tempfile
+from collections.abc import Mapping, Sequence
 
 import click
 import texttable
 
+from inmanta.const import ENVIRON_FORCE_TTY
 from inmanta.module import ModuleV2, Project
 from inmanta_git_ops import const
 from inmanta_plugins.git_ops.store import SLICE_STORE_REGISTRY
@@ -201,6 +205,181 @@ def project(inmanta_arg: list[str]) -> None:
     INMANTA_ARGS.extend(inmanta_arg)
 
 
+def inmanta_compile_command(inmanta_compile_arg: Sequence[str]) -> list[str]:
+    """
+    Construct the command line to run a compile on the current project.
+
+    :param inmanta_compile_arg: Additional arguments to pass to the inmanta
+        compile command.
+    """
+    return [
+        sys.executable,
+        "-m",
+        "inmanta.app",
+        *INMANTA_ARGS,
+        "compile",
+        *inmanta_compile_arg,
+    ]
+
+
+def run_compile(
+    inmanta_compile_arg: Sequence[str],
+    *,
+    compile_mode: str,
+) -> None:
+    """
+    Run a compile on the current project, in a subprocess, with the given
+    compile mode.
+
+    :param inmanta_compile_arg: Additional arguments to pass to the inmanta
+        compile command.
+    :param compile_mode: The compile mode the compile should run in.
+    """
+    subprocess.run(
+        inmanta_compile_command(inmanta_compile_arg),
+        check=True,
+        env={**os.environ, const.COMPILE_MODE_ENV_VAR: compile_mode},
+    )
+
+
+# Environment variables, defined by inmanta-core, with which the user can
+# set the logging configuration of the compiler.
+COMPILER_LOGGING_CONTENT_ENV_VAR = "INMANTA_LOGGING_COMPILER_CONTENT"
+COMPILER_LOGGING_ENV_VARS = [
+    "INMANTA_LOGGING_COMPILER",
+    COMPILER_LOGGING_CONTENT_ENV_VAR,
+    "INMANTA_LOGGING_COMPILER_TMPL",
+    "INMANTA_CONFIG_LOGGING_CONFIG",
+    "INMANTA_CONFIG_LOGGING_CONFIG_CONTENT",
+    "INMANTA_CONFIG_LOGGING_CONFIG_TMPL",
+]
+
+# Pattern matching the headers of the summary that the compiler prints at the
+# end of every compile, and which shouldn't be part of a slice command output.
+COMPILE_SUMMARY_HEADER_REGEX = re.compile(
+    r"=+ (SUCCESS|COMPILATION FAILURE|EXPORT FAILURE|EXCEPTION TRACE) =+"
+)
+ANSI_ESCAPE_SEQUENCE_REGEX = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def slice_compile_logging_config() -> str:
+    """
+    Build the logging configuration for the slice command compiles: all the
+    compiler logs are sent to stderr, so that the compiler doesn't log
+    anything on stdout.  The logs are colored, like the default console
+    logging of the compiler, when stderr is a tty.  The inmanta.logging
+    logger is restricted to errors because it warns about the default cli
+    logging options it ignores when a logging config is provided.
+    """
+    on_tty = sys.stderr.isatty()
+    return json.dumps(
+        {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "formatters": {
+                "console": {
+                    "()": "inmanta.logging.MultiLineFormatter",
+                    "fmt": (
+                        "%(log_color)s%(name)-15s%(levelname)-8s%(reset)s%(blue)s%(message)s"
+                        if on_tty
+                        else "%(name)-15s%(levelname)-8s%(message)s"
+                    ),
+                    "log_colors": (
+                        {
+                            "DEBUG": "cyan",
+                            "INFO": "green",
+                            "WARNING": "yellow",
+                            "ERROR": "red",
+                            "CRITICAL": "red",
+                        }
+                        if on_tty
+                        else None
+                    ),
+                    "reset": on_tty,
+                    "no_color": not on_tty,
+                    "keep_logger_names": False,
+                }
+            },
+            "handlers": {
+                "console": {
+                    "class": "logging.StreamHandler",
+                    "formatter": "console",
+                    "level": "WARNING",
+                    "stream": "ext://sys.stderr",
+                }
+            },
+            "loggers": {
+                "inmanta.logging": {"level": "ERROR"},
+            },
+            "root": {"handlers": ["console"], "level": "WARNING"},
+        }
+    )
+
+
+def run_slice_command_compile(
+    inmanta_compile_arg: Sequence[str],
+    *,
+    compile_mode: str,
+    env: Mapping[str, str],
+) -> object:
+    """
+    Run a slice command compile on the current project.  The compiler is
+    configured to log to stderr, and any remaining compile output on stdout
+    is forwarded to stderr, without the compile summary banner.  The result
+    of the command, written to the output file by the corresponding
+    finalizer, is read back and returned.
+
+    :param inmanta_compile_arg: Additional arguments to pass to the inmanta
+        compile command.
+    :param compile_mode: The compile mode the compile should run in.
+    :param env: Additional environment variables to pass to the compile.
+    """
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        output_file = pathlib.Path(tmp_dir) / "output.json"
+        compile_env = {
+            **os.environ,
+            const.COMPILE_MODE_ENV_VAR: compile_mode,
+            **env,
+            const.OUTPUT_FILE_ENV_VAR: str(output_file),
+        }
+        if not any(var in os.environ for var in COMPILER_LOGGING_ENV_VARS):
+            # The user didn't configure the compiler logging, make sure the
+            # compiler doesn't log anything on stdout
+            compile_env[COMPILER_LOGGING_CONTENT_ENV_VAR] = (
+                slice_compile_logging_config()
+            )
+        if sys.stderr.isatty():
+            # The compile output goes through a pipe, let the compiler know
+            # its output still ends up on a tty, so it keeps its colors
+            compile_env[ENVIRON_FORCE_TTY] = "true"
+
+        with subprocess.Popen(
+            inmanta_compile_command(inmanta_compile_arg),
+            env=compile_env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        ) as process:
+            assert process.stdout is not None
+            for line in process.stdout:
+                plain_line = ANSI_ESCAPE_SEQUENCE_REGEX.sub("", line).strip()
+                if COMPILE_SUMMARY_HEADER_REGEX.fullmatch(plain_line):
+                    # Drop the compile summary banner from the output
+                    continue
+                sys.stderr.write(line)
+
+        if process.returncode != 0:
+            raise click.ClickException("The compile failed (see logs above)")
+
+        if not output_file.exists():
+            raise click.ClickException(
+                "The compile didn't emit any result for the slice command.  "
+                "Make sure the project model imports the git_ops module."
+            )
+
+        return json.loads(output_file.read_text())
+
+
 @project.command("update")
 @click.option(
     "--inmanta-compile-arg",
@@ -214,18 +393,7 @@ def update(inmanta_compile_arg: list[str]) -> None:
     Read each source slice, and update their content if processors need to resolve some values.
     Verify that the input data is correct, don't export any resource to the orchestrator.
     """
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "inmanta.app",
-            *INMANTA_ARGS,
-            "compile",
-            *inmanta_compile_arg,
-        ],
-        check=True,
-        env={**os.environ, "INMANTA_GIT_OPS_COMPILE_MODE": const.COMPILE_UPDATE},
-    )
+    run_compile(inmanta_compile_arg, compile_mode=const.COMPILE_UPDATE)
 
 
 @project.command("sync")
@@ -242,18 +410,7 @@ def sync(inmanta_compile_arg: list[str]) -> None:
     by emitting a newer version of the slice or marking it as deleted.  This will make sure the slice store is in sync
     with the source slices, and that the orchestrator will receive the expected resources when doing the next export.
     """
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "inmanta.app",
-            *INMANTA_ARGS,
-            "compile",
-            *inmanta_compile_arg,
-        ],
-        check=True,
-        env={**os.environ, "INMANTA_GIT_OPS_COMPILE_MODE": const.COMPILE_SYNC},
-    )
+    run_compile(inmanta_compile_arg, compile_mode=const.COMPILE_SYNC)
 
 
 @project.command("prune")
@@ -269,18 +426,167 @@ def prune(inmanta_compile_arg: list[str]) -> None:
     Remove from the slice store all active slices which have a more recent version
     or which are deleted.
     """
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "inmanta.app",
-            *INMANTA_ARGS,
-            "compile",
-            *inmanta_compile_arg,
-        ],
-        check=True,
-        env={**os.environ, "INMANTA_GIT_OPS_COMPILE_MODE": const.COMPILE_PRUNE},
+    run_compile(inmanta_compile_arg, compile_mode=const.COMPILE_PRUNE)
+
+
+@project.group("slice")
+def slice() -> None:
+    """
+    Commands to manage individual slices of the current Inmanta project.
+    """
+    pass
+
+
+@slice.command("create")
+@click.option(
+    "--store",
+    type=str,
+    help="The name of the store in which the slice should be created.",
+    envvar=const.SLICE_STORE_ENV_VAR,
+    prompt=True,
+    show_envvar=True,
+)
+@click.option(
+    "--name",
+    type=str,
+    help="The name of the slice to create, used as the source file name.",
+    envvar=const.SLICE_NAME_ENV_VAR,
+    prompt=True,
+    show_envvar=True,
+)
+@click.option(
+    "--extension",
+    type=click.Choice(["json", "yaml"]),
+    default="json",
+    help="The format of the created slice file.",
+    envvar=const.SLICE_EXTENSION_ENV_VAR,
+    show_default=True,
+    show_envvar=True,
+)
+@click.option(
+    "--inmanta-compile-arg",
+    multiple=True,
+    help="Additional arguments to pass to the inmanta compile command.",
+)
+def create(
+    store: str,
+    name: str,
+    extension: str,
+    inmanta_compile_arg: list[str],
+) -> None:
+    """
+    Scaffold a new source slice file for the given store.
+
+    The created file contains all the properties of the store's schema: the
+    required ones with a placeholder value that should be replaced by the user,
+    the others pre-filled with their default value.  The path of the created
+    file is printed to stdout.
+    """
+    path = run_slice_command_compile(
+        inmanta_compile_arg,
+        compile_mode=const.COMPILE_SLICE_CREATE,
+        env={
+            const.SLICE_STORE_ENV_VAR: store,
+            const.SLICE_NAME_ENV_VAR: name,
+            const.SLICE_EXTENSION_ENV_VAR: extension,
+        },
     )
+    click.echo(path)
+
+
+@slice.command("inspect")
+@click.option(
+    "--store",
+    type=str,
+    help="The name of the store in which the slice is defined.",
+    envvar=const.SLICE_STORE_ENV_VAR,
+    prompt=True,
+    show_envvar=True,
+)
+@click.option(
+    "--name",
+    type=str,
+    help="The name of the slice to inspect.",
+    envvar=const.SLICE_NAME_ENV_VAR,
+    prompt=True,
+    show_envvar=True,
+)
+@click.option(
+    "--inmanta-compile-arg",
+    multiple=True,
+    help="Additional arguments to pass to the inmanta compile command.",
+)
+def inspect(store: str, name: str, inmanta_compile_arg: list[str]) -> None:
+    """
+    Dump the fully-resolved view of a single slice as JSON.
+
+    The output matches the view of the slice during an update compile: the merged
+    current and previous attributes, with operation/path markers, and the version
+    the slice would be assigned.
+    """
+    result = run_slice_command_compile(
+        inmanta_compile_arg,
+        compile_mode=const.COMPILE_SLICE_INSPECT,
+        env={
+            const.SLICE_STORE_ENV_VAR: store,
+            const.SLICE_NAME_ENV_VAR: name,
+        },
+    )
+    click.echo(json.dumps(result, indent=2))
+
+
+@slice.command("list")
+@click.option(
+    "--store",
+    type=str,
+    default=None,
+    help="Only list the slices of the store with this name.",
+    envvar=const.SLICE_STORE_ENV_VAR,
+    show_envvar=True,
+)
+@click.option(
+    "--format",
+    type=click.Choice(["table", "json"]),
+    default="table",
+    help="Output format",
+)
+@click.option(
+    "--inmanta-compile-arg",
+    multiple=True,
+    help="Additional arguments to pass to the inmanta compile command.",
+)
+def list_slices(
+    store: str | None,
+    format: str,
+    inmanta_compile_arg: list[str],
+) -> None:
+    """
+    List the slices of the current project, optionally filtered by store.
+
+    Slices present in either the source folder or the active store are listed,
+    with the version they would be assigned during an update compile.
+    """
+    slices = run_slice_command_compile(
+        inmanta_compile_arg,
+        compile_mode=const.COMPILE_SLICE_LIST,
+        env={const.SLICE_STORE_ENV_VAR: store} if store is not None else {},
+    )
+
+    if format == "json":
+        click.echo(json.dumps(slices, indent=2))
+        return
+
+    elif format == "table":
+        table = texttable.Texttable()
+        table.header(["Store", "Name", "Version", "Deleted"])
+
+        for s in slices:
+            table.add_row([s["store_name"], s["name"], s["version"], s["deleted"]])
+
+        click.echo(table.draw())
+
+    else:
+        raise click.BadParameter(f"Unsupported format {format}")
 
 
 if __name__ == "__main__":

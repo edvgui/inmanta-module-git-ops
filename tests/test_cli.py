@@ -21,6 +21,8 @@ import os
 import pathlib
 import subprocess
 
+import yaml
+
 
 def test_basics() -> None:
     example_path = pathlib.Path(__file__).parent.parent / "docs/example"
@@ -45,4 +47,163 @@ def test_basics() -> None:
         ["git-ops", "module", "store", "schema", "--store", "fs"],
         check=True,
         env={"INMANTA_GIT_OPS_MODULE_PATH": str(example_path), **os.environ},
+    )
+
+
+def test_project_slice_commands(tmp_path: pathlib.Path) -> None:
+    # Set up a minimal inmanta project using the example module, the modules
+    # are resolved from the python environment running the test
+    project_path = tmp_path / "project"
+    project_path.mkdir()
+    (project_path / "project.yml").write_text(yaml.safe_dump({"name": "test-project"}))
+    (project_path / "main.cf").write_text(
+        "\n".join(
+            [
+                "import example::slices::fs",
+                "import example::slices::fs::unroll",
+                "import example::slices::simple",
+                "import example::slices::recursive",
+            ]
+        )
+    )
+
+    def git_ops(*args: str, expect_failure: bool = False) -> str:
+        result = subprocess.run(
+            ["git-ops", "project", *args],
+            cwd=project_path,
+            env={**os.environ},
+            text=True,
+            capture_output=True,
+        )
+        if expect_failure:
+            assert result.returncode != 0, result.stdout + result.stderr
+        else:
+            assert result.returncode == 0, result.stdout + result.stderr
+        if args[0] == "slice":
+            # The compile summary banner is dropped from the output of the
+            # slice commands
+            assert "SUCCESS" not in result.stderr, result.stderr
+            assert "FAILURE" not in result.stderr, result.stderr
+        return result.stdout
+
+    # No slices yet
+    assert json.loads(git_ops("slice", "list", "--format", "json")) == []
+
+    # Scaffold a new fs slice, the created file contains a placeholder for
+    # each required property of the store schema, and the default value of
+    # the non-required ones.  The created path, printed to stdout, is
+    # relative to the directory the command is invoked from.
+    created = git_ops("slice", "create", "--store", "fs", "--name", "test-folder")
+    fs_source = project_path / "files" / "fs" / "test-folder.json"
+    assert project_path / created.strip() == fs_source
+    assert json.loads(fs_source.read_text()) == {
+        "name": "<REPLACE_THIS>",
+        "root": "<REPLACE_THIS>",
+        "permissions": "770",
+        "owner": None,
+        "group": None,
+        "type": "folder",
+        "content": [],
+    }
+
+    # Refuse to overwrite an existing source slice
+    git_ops(
+        "slice",
+        "create",
+        "--store",
+        "fs",
+        "--name",
+        "test-folder",
+        expect_failure=True,
+    )
+
+    # Refuse to create a slice in an unknown store
+    git_ops(
+        "slice", "create", "--store", "unknown", "--name", "test", expect_failure=True
+    )
+
+    # Scaffold a yaml slice, with a mandatory embedded relation
+    created = git_ops(
+        "slice",
+        "create",
+        "--store",
+        "recursive",
+        "--name",
+        "rec",
+        "--extension",
+        "yaml",
+    )
+    rec_source = project_path / "files" / "recursive" / "rec.yaml"
+    assert project_path / created.strip() == rec_source
+    assert yaml.safe_load(rec_source.read_text()) == {
+        "name": "<REPLACE_THIS>",
+        "description": None,
+        "unique_id": None,
+        "embedded_required": {
+            "name": "<REPLACE_THIS>",
+            "description": None,
+            "unique_id": None,
+            "recursive_slice": [],
+        },
+        "embedded_optional": None,
+        "embedded_sequence": [],
+    }
+    rec_source.unlink()
+
+    # Fill in the placeholders of the fs slice
+    attributes = json.loads(fs_source.read_text())
+    attributes["name"] = "folder"
+    attributes["root"] = "/tmp"
+    fs_source.write_text(json.dumps(attributes))
+
+    # The slice now shows up in the list, with the version it would be
+    # assigned during an update compile
+    assert json.loads(git_ops("slice", "list", "--format", "json")) == [
+        {"name": "test-folder", "store_name": "fs", "version": 1, "deleted": False}
+    ]
+
+    # The table output contains the slice details
+    table = git_ops("slice", "list")
+    assert "Store" in table
+    assert "fs" in table
+    assert "test-folder" in table
+
+    # Inspect the slice, the output is the fully resolved merged slice
+    inspected = json.loads(
+        git_ops("slice", "inspect", "--store", "fs", "--name", "test-folder")
+    )
+    assert inspected["name"] == "test-folder"
+    assert inspected["store_name"] == "fs"
+    assert inspected["version"] == 1
+    assert inspected["deleted"] is False
+    assert inspected["attributes"]["operation"] == "create"
+    assert inspected["attributes"]["path"] == "."
+    assert inspected["attributes"]["version"] == 1
+    assert inspected["attributes"]["slice_store"] == "fs"
+    assert inspected["attributes"]["slice_name"] == "test-folder"
+    assert inspected["attributes"]["name"] == "folder"
+    assert inspected["attributes"]["root"] == "/tmp"
+    assert inspected["attributes"]["content"] == []
+
+    # Inspecting a slice that doesn't exist fails
+    git_ops(
+        "slice", "inspect", "--store", "fs", "--name", "missing", expect_failure=True
+    )
+
+    # Sync the slice to the active store, then delete its source file
+    git_ops("sync")
+    fs_source.unlink()
+
+    # The slice is still listed, as a deleted slice with a new version
+    assert json.loads(git_ops("slice", "list", "--format", "json")) == [
+        {"name": "test-folder", "store_name": "fs", "version": 2, "deleted": True}
+    ]
+
+    # An empty source slice which never had any active version is ignored
+    empty_source = project_path / "files" / "simple" / "empty.json"
+    empty_source.parent.mkdir(parents=True, exist_ok=True)
+    empty_source.write_text("{}")
+    assert (
+        json.loads(git_ops("slice", "list", "--store", "simple", "--format", "json"))
+        == []
     )

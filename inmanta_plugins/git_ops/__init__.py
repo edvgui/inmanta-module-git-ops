@@ -46,6 +46,11 @@ def unroll_slices(
     """
     from inmanta_plugins.git_ops import store
 
+    if const.COMPILE_MODE in const.COMPILE_SLICE_COMMANDS:
+        # Slice command compile, no slice should be emitted in the model,
+        # the command logic is handled in a finalizer
+        return []
+
     all_slices = store.get_store(store_name).get_all_slices()
     return [asdict(s) for s in all_slices]
 
