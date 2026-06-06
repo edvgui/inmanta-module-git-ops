@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.5.1 - ?
+
+
 ## v0.5.0 - 2026-06-06
 
 - Add `git-ops project slice` command group to create, list and inspect the slices of a project.
