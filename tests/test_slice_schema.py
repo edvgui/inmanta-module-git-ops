@@ -20,7 +20,7 @@ import typing
 from collections.abc import Sequence
 
 import pydantic
-from inmanta_plugins.example.slices.fs import File, RootFolder
+from inmanta_plugins.example.slices.fs import File, Folder, RootFolder
 from inmanta_plugins.example.slices.recursive import EmbeddedSlice, Slice
 from inmanta_plugins.example.slices.simple import Slice as SimpleSlice
 
@@ -177,6 +177,32 @@ def test_scaffold_embedded_defaults() -> None:
         # A default that can not be constructed falls back to the placeholder
         "invalid": const.SLICE_PLACEHOLDER,
     }
+
+
+def test_discriminated_union_entity_name() -> None:
+    """
+    The discriminated union entity is named after the forward reference used in
+    the field annotation (``Sequence["FolderContent"]``), and that name must be
+    recovered even when the model has been rebuilt and its field annotation
+    resolved to the concrete union type.  Slice models are rebuilt eagerly when
+    their store is registered, so ``Folder.content`` is already in its resolved
+    form here.
+    """
+    # Precondition: the model has been rebuilt, so the field annotation no
+    # longer carries the "FolderContent" forward reference.
+    assert Folder.__pydantic_complete__
+    assert typing.get_args(Folder.model_fields["content"].annotation) != (
+        "FolderContent",
+    )
+
+    schema = RootFolder.entity_schema()
+    content = next(r for r in schema.all_relations() if r.name == "content")
+
+    # The union entity keeps its forward-reference name instead of falling back
+    # to the (invalid, lower-case) relation attribute name.
+    assert content.entity.name == "FolderContent"
+    assert content.entity.discriminator == "type"
+    assert {sub.name for sub in content.entity.sub_entities} == {"Folder", "File"}
 
 
 def test_scaffold_discriminated_union() -> None:

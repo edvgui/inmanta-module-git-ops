@@ -2,6 +2,7 @@
 
 ## v0.5.1 - ?
 
+- Fix spurious discriminated-union `ValidationError` on slice models with forward-referenced fields after a compile reloaded the plugin modules.
 
 ## v0.5.0 - 2026-06-06
 

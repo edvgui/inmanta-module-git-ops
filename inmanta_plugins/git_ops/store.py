@@ -288,6 +288,12 @@ class SliceStore[S: slice.SliceObjectABC]:
 
         self.register_store()
 
+        # Eagerly resolve the forward references of all the slice models now
+        # that this store's module is fully defined.  This binds the models to
+        # their own classes before an inmanta compile can reload the plugin
+        # modules out from under a long-lived consumer.
+        slice.rebuild_slice_models()
+
     @property
     def source_path(self) -> pathlib.Path:
         """
