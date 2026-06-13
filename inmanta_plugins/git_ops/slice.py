@@ -198,6 +198,33 @@ def resolve_forward_reference(
     return getattr(module, name, None), name
 
 
+def raw_forward_reference_name(owner_cls: type, attribute: str) -> str | None:
+    """
+    Recover the name of the forward reference used in the (raw) annotation of
+    the given attribute, peeling one level of container (e.g. ``Sequence`` or
+    an ``Optional``) to reach the element.  Return None if the annotation does
+    not contain any forward reference.
+
+    Pydantic mutates ``model_fields[...].annotation`` to the resolved type when
+    a model is rebuilt, which erases the forward-reference name.  The class
+    ``__annotations__`` are never mutated, so they remain a reliable source for
+    that name regardless of the model's rebuild state.
+
+    :param owner_cls: The class on which the attribute is defined.
+    :param attribute: The name of the attribute whose annotation to inspect.
+    """
+    raw = owner_cls.__annotations__.get(attribute)
+    if raw is None:
+        return None
+
+    for candidate in (raw, *typing.get_args(raw)):
+        _, name = resolve_forward_reference(candidate, owner_cls)
+        if name is not None:
+            return name
+
+    return None
+
+
 def discriminated_union(
     annotation: object, owner_cls: type, *, fallback_name: str | None
 ) -> tuple[str, str, Sequence[type]] | None:
@@ -213,6 +240,12 @@ def discriminated_union(
         derived from a forward reference (e.g. the relation attribute name).
     """
     resolved, name = resolve_forward_reference(annotation, owner_cls)
+    if name is None and fallback_name is not None:
+        # The annotation reaching us has already been resolved (e.g. the model
+        # was rebuilt to bind it to its own classes), so it no longer carries
+        # the forward-reference name we use to name the union entity.  Recover
+        # that name from the raw class annotation, which is never mutated.
+        name = raw_forward_reference_name(owner_cls, fallback_name)
     if name is None:
         name = fallback_name
 
@@ -546,6 +579,46 @@ class SliceEntitySchema:
         return count > 1
 
 
+# Registry of all the slice model classes that have been defined.  It is used
+# to eagerly resolve their (possibly forward-referenced) annotations before an
+# inmanta compile can swap the plugin modules in sys.modules.  See
+# rebuild_slice_models for the details.
+_SLICE_MODELS: list[type["EmbeddedSliceObjectABC"]] = []
+
+
+def rebuild_slice_models() -> None:
+    """
+    Eagerly resolve the (possibly forward-referenced) annotations of all the
+    registered slice models, binding each model to the classes currently in
+    scope.
+
+    Pydantic resolves forward references lazily, on the first validation, by
+    looking the referenced name up in ``sys.modules[cls.__module__]``.  The
+    inmanta compiler reloads plugin modules by replacing their ``sys.modules``
+    entry with a fresh module object holding brand new class objects.  A model
+    whose forward references are still unresolved when its first validation
+    happens *after* such a reload resolves them against the new module, while a
+    long-lived consumer (e.g. a test imported at collection time) still holds
+    instances built from the old module.  The discriminated union then rejects
+    an instance of the very class it expects, raising a spurious
+    ``ValidationError``.
+
+    Forcing the resolution eagerly, when a store is registered (by which point
+    the whole plugin module, including the unions defined after the models, is
+    defined), binds every model to its own classes before any reload can swap
+    them out.
+    """
+    for model in _SLICE_MODELS:
+        if model.__pydantic_complete__:
+            # Already resolved, binding it again would be a no-op.
+            continue
+
+        # raise_errors=False: a model may still reference a name that is not
+        # defined yet (e.g. its union lives in a module not imported yet).  It
+        # will be rebuilt by a later store registration.
+        model.model_rebuild(force=True, raise_errors=False)
+
+
 def docstring(c: type) -> str | None:
     """
     Extract the docstring of a class definition (if there is any). Format
@@ -565,6 +638,12 @@ class EmbeddedSliceObjectABC(pydantic.BaseModel):
     """
 
     keys: typing.ClassVar[Sequence[str]] = tuple()
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        # Keep track of every slice model so its forward references can be
+        # resolved eagerly when a store is registered.  See rebuild_slice_models.
+        _SLICE_MODELS.append(cls)
 
     operation: SkipJsonSchema[str] = pydantic.Field(
         default="create",
