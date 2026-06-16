@@ -1,6 +1,8 @@
 # Changelog
 
-## v0.5.2 - ?
+## v0.6.0 - ?
+
+- Only insert the `update` operation on slice elements whose content actually changed, instead of on every element of a slice that has more than one version.  Unchanged elements keep the `create` operation; `create` and `delete` are unaffected.
 
 
 ## v0.5.1 - 2026-06-13
