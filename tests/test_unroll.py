@@ -316,7 +316,7 @@ def test_unroll_slices(
         "path": ".",
         "version": 2,
         "embedded_required": {
-            "operation": "update",
+            "operation": "create",
             "path": "embedded_required",
             "name": "aa",
             "description": None,
@@ -413,7 +413,7 @@ def test_unroll_slices(
         "path": ".",
         "version": 3,
         "embedded_required": {
-            "operation": "update",
+            "operation": "create",
             "path": "embedded_required",
             "name": "aa",
             "description": None,
@@ -421,7 +421,7 @@ def test_unroll_slices(
             "recursive_slice": [],
         },
         "embedded_optional": {
-            "operation": "update",
+            "operation": "create",
             "path": "embedded_optional",
             "name": "ab",
             "description": None,
@@ -622,6 +622,229 @@ def test_desired_state_stability(project: Project, tmp_path: pathlib.Path) -> No
     assert desired_state_value() == [a_merged_val, b_val]
 
 
+def _embedded(
+    name: str,
+    description: str | None = None,
+    recursive_slice: list[dict] | None = None,
+) -> dict:
+    """
+    Build the source attributes of an example::slices::recursive::EmbeddedSlice.
+    """
+    return {
+        "name": name,
+        "description": description,
+        "unique_id": None,
+        "recursive_slice": recursive_slice if recursive_slice is not None else [],
+    }
+
+
+def _operations_by_path(project: Project, store_name: str) -> dict[str, str]:
+    """
+    Compile a model that unrolls the slices of the given store and return a
+    mapping from the path of every slice element to the operation attached to
+    it.  The store is expected to contain a single slice.
+    """
+    model = f"""
+        import git_ops
+        import unittest
+
+        unittest::Resource(
+            name="{store_name}",
+            desired_value=std::json_dumps(
+                [
+                    slice["attributes"]
+                    for slice in git_ops::unroll_slices("{store_name}")
+                ]
+            )
+        )
+    """
+    project.compile(model, no_dedent=False)
+    resource = project.get_resource("unittest::Resource")
+    assert resource is not None
+
+    operations: dict[str, str] = {}
+
+    def collect(element: object) -> None:
+        if isinstance(element, dict):
+            if "operation" in element and "path" in element:
+                operations[element["path"]] = element["operation"]
+            for value in element.values():
+                collect(value)
+        elif isinstance(element, list):
+            for value in element:
+                collect(value)
+
+    collect(json.loads(resource.desired_value))
+    return operations
+
+
+def test_update_operation_only_on_changed_content(
+    project: Project, tmp_path: pathlib.Path
+) -> None:
+    """
+    When a slice gains a new version, the "update" operation must only be
+    attached to the slice elements whose content actually changed.  Unchanged
+    elements keep the "create" operation, new elements are created and removed
+    elements are deleted.
+    """
+    store = SliceStore(
+        name="test_scope",
+        folder="file://" + str(tmp_path / "test"),
+        schema=Slice,
+    )
+
+    # The empty store unrolls to nothing (and the active folder gets created).
+    assert _operations_by_path(project, store.name) == {}
+
+    # First version: everything is created.
+    a_v1 = {
+        "name": "a",
+        "description": None,
+        "unique_id": None,
+        "embedded_required": _embedded("req"),
+        "embedded_optional": None,
+        "embedded_sequence": [_embedded("x", "1"), _embedded("y", "1")],
+    }
+    (store.active_path / "a@v1.json").write_text(json.dumps(a_v1))
+    assert _operations_by_path(project, store.name) == {
+        ".": "create",
+        "embedded_required": "create",
+        "embedded_sequence[name=x]": "create",
+        "embedded_sequence[name=y]": "create",
+    }
+
+    # Second version: change x, leave y and embedded_required untouched, and
+    # add an optional embedded slice.  Only the slice itself, x and the new
+    # optional slice carry a change.
+    a_v2 = copy.deepcopy(a_v1)
+    a_v2["embedded_sequence"][0]["description"] = "2"
+    a_v2["embedded_optional"] = _embedded("opt")
+    (store.active_path / "a@v2.json").write_text(json.dumps(a_v2))
+    assert _operations_by_path(project, store.name) == {
+        ".": "update",
+        "embedded_required": "create",
+        "embedded_optional": "create",
+        "embedded_sequence[name=x]": "update",
+        "embedded_sequence[name=y]": "create",
+    }
+
+    # Third version: remove y, leave everything else untouched.
+    # The slice is updated;
+    # x remains changed as it has multiple different versions
+    a_v3 = copy.deepcopy(a_v2)
+    a_v3["embedded_sequence"] = a_v3["embedded_sequence"][:1]
+    (store.active_path / "a@v3.json").write_text(json.dumps(a_v3))
+    assert _operations_by_path(project, store.name) == {
+        ".": "update",
+        "embedded_required": "create",
+        "embedded_optional": "create",
+        "embedded_sequence[name=x]": "update",
+        "embedded_sequence[name=y]": "delete",
+    }
+
+
+def test_update_operation_propagates_through_embedded_tree(
+    project: Project, tmp_path: pathlib.Path
+) -> None:
+    """
+    A change deep inside an embedded slice marks the whole chain of parent
+    elements as updated, while unaffected sibling elements stay created.
+    """
+    store = SliceStore(
+        name="test_deep",
+        folder="file://" + str(tmp_path / "test"),
+        schema=Slice,
+    )
+
+    # The empty store unrolls to nothing (and the active folder gets created).
+    assert _operations_by_path(project, store.name) == {}
+
+    a_v1 = {
+        "name": "a",
+        "description": None,
+        "unique_id": None,
+        "embedded_required": _embedded("req", recursive_slice=[_embedded("leaf", "1")]),
+        "embedded_optional": None,
+        "embedded_sequence": [_embedded("sibling")],
+    }
+    (store.active_path / "a@v1.json").write_text(json.dumps(a_v1))
+    assert _operations_by_path(project, store.name) == {
+        ".": "create",
+        "embedded_required": "create",
+        "embedded_required.recursive_slice[name=leaf]": "create",
+        "embedded_sequence[name=sibling]": "create",
+    }
+
+    # Change a leaf deep inside embedded_required.  The change bubbles up to
+    # embedded_required and the slice itself, but the sibling stays a creation.
+    a_v2 = copy.deepcopy(a_v1)
+    a_v2["embedded_required"]["recursive_slice"][0]["description"] = "2"
+    (store.active_path / "a@v2.json").write_text(json.dumps(a_v2))
+    assert _operations_by_path(project, store.name) == {
+        ".": "update",
+        "embedded_required": "update",
+        "embedded_required.recursive_slice[name=leaf]": "update",
+        "embedded_sequence[name=sibling]": "create",
+    }
+
+
+def test_update_operation_ignores_deletions_carried_from_older_versions(
+    project: Project, tmp_path: pathlib.Path
+) -> None:
+    """
+    Deletions from versions older than the one immediately preceding the
+    current one keep being emitted (so the deleted elements stay purged), but
+    they must not, on their own, make their unchanged parent look updated: an
+    element is only updated when its content changed since the previous
+    version.
+    """
+    store = SliceStore(
+        name="test_carried",
+        folder="file://" + str(tmp_path / "test"),
+        schema=Slice,
+    )
+
+    # The empty store unrolls to nothing (and the active folder gets created).
+    assert _operations_by_path(project, store.name) == {}
+
+    # v1: embedded_required holds two nested slices, "keep" and "drop".
+    a_v1 = {
+        "name": "a",
+        "description": "v1",
+        "unique_id": None,
+        "embedded_required": _embedded(
+            "req", recursive_slice=[_embedded("keep"), _embedded("drop")]
+        ),
+        "embedded_optional": None,
+        "embedded_sequence": [],
+    }
+    (store.active_path / "a@v1.json").write_text(json.dumps(a_v1))
+
+    # v2: "drop" is removed, so embedded_required changed and is updated.
+    a_v2 = copy.deepcopy(a_v1)
+    a_v2["embedded_required"]["recursive_slice"] = [_embedded("keep")]
+    (store.active_path / "a@v2.json").write_text(json.dumps(a_v2))
+    assert _operations_by_path(project, store.name) == {
+        ".": "update",
+        "embedded_required": "update",
+        "embedded_required.recursive_slice[name=keep]": "create",
+        "embedded_required.recursive_slice[name=drop]": "delete",
+    }
+
+    # v3: only the root changes.  The deletion of "drop" is carried forward
+    # (still emitted as a delete), but embedded_required did not change since
+    # v2 and must stay an update.
+    a_v3 = copy.deepcopy(a_v2)
+    a_v3["description"] = "v3"
+    (store.active_path / "a@v3.json").write_text(json.dumps(a_v3))
+    assert _operations_by_path(project, store.name) == {
+        ".": "update",
+        "embedded_required": "update",
+        "embedded_required.recursive_slice[name=keep]": "create",
+        "embedded_required.recursive_slice[name=drop]": "delete",
+    }
+
+
 def test_delete_embedded_entities(project: Project, tmp_path: pathlib.Path) -> None:
     """
     Test the unrolling behavior when an embedded slice is being removed.
@@ -791,14 +1014,14 @@ def test_delete_embedded_entities(project: Project, tmp_path: pathlib.Path) -> N
             "description": None,
             "unique_id": None,
             "embedded_required": {
-                "operation": "update",
+                "operation": "create",
                 "path": "embedded_required",
                 "name": "a",
                 "description": None,
                 "unique_id": None,
                 "recursive_slice": [
                     {
-                        "operation": "update",
+                        "operation": "create",
                         "path": "embedded_required.recursive_slice[name=a]",
                         "name": "a",
                         "description": None,

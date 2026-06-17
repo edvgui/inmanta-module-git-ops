@@ -89,12 +89,13 @@ class SliceFile[S: slice.SliceObjectABC]:
             # The slice has been deleted
             return {}
 
-        # Load default values (and model only values)
-        return (
-            pydantic.TypeAdapter(self.schema)
-            .validate_python(attributes)
-            .model_dump(mode="json")
-        )
+        with slice.exclude_model_values():
+            # Load default values
+            return (
+                pydantic.TypeAdapter(self.schema)
+                .validate_python(attributes)
+                .model_dump(mode="json")
+            )
 
     def write_raw(self, attributes: dict) -> None:
         """
@@ -604,9 +605,14 @@ class SliceStore[S: slice.SliceObjectABC]:
                     merge_attributes(
                         p_current,
                         p_previous,
-                        operation=const.SLICE_DELETE,
                         path=dict_path.NullPath(),
                         schema=self.schema.entity_schema(),
+                        # Don't insert the path yet and keep create operation implicit
+                        # to avoid trigerring a diff when there is not one
+                        # Other operations can be shown as we want to make sure that the
+                        # last merge knows some past change might not be settled yet
+                        insert_path=False,
+                        implicit_create_operation=True,
                     ),
                     *previous[2:],
                 ]
@@ -658,9 +664,8 @@ class SliceStore[S: slice.SliceObjectABC]:
                 # We need to get the attributes of the last undeleted
                 # version, otherwise we don't know what we have to delete
                 attributes = merge_attributes(
-                    current=previous_slices[s].attributes,
+                    current=None,
                     previous=previous_slices[s].attributes,
-                    operation=const.SLICE_DELETE,
                     path=dict_path.NullPath(),
                     schema=self.schema.entity_schema(),
                 )
@@ -670,7 +675,6 @@ class SliceStore[S: slice.SliceObjectABC]:
                 attributes = merge_attributes(
                     current=current.attributes,
                     previous=None if new else previous_slices[s].attributes,
-                    operation="create" if new else "update",
                     path=dict_path.NullPath(),
                     schema=self.schema.entity_schema(),
                 )
@@ -1003,15 +1007,12 @@ class SliceStore[S: slice.SliceObjectABC]:
         try:
             # If the embedded slice is the root slice, we just get the empty
             # slice
-            parent_value = get_parent_path(path).get_element(source)
+            get_parent_path(path).get_element(source)
         except LookupError:
             # If the embedded slice has been removed, we get a lookup
             # error
-            parent_value = {}
-
-        if parent_value.get("operation", const.SLICE_DELETE) == const.SLICE_DELETE:
             raise RuntimeError(
-                f"Can not set attribute on deleted slice: {repr(str(parent_value))} in "
+                f"Can not set attribute on deleted slice: {str(path)} in "
                 f"Slice(name={repr(name)}) is deleted from source slice and can not "
                 "be modified."
             )
@@ -1172,14 +1173,76 @@ def clear_project_paths() -> None:
         store._active_path = None
 
 
+def resolve_operation(
+    current: object,
+    previous: object,
+) -> typing.Literal["create", "update", "delete"]:
+    """
+    Resolve the operation flagging how the current differentiate from the previous.
+    Possible outcome:
+        - create: the current and previous are the same, or there was no previous
+        - update: the current and previous are different
+        - delete: there is no current but there was a previous
+    """
+    match current, previous:
+        case _, None:
+            return const.SLICE_CREATE
+        case None, _:
+            return const.SLICE_DELETE
+        case _ if current == previous:
+            return const.SLICE_CREATE
+        case _:
+            return const.SLICE_UPDATE
+
+
+@typing.overload
+def merge_attributes(
+    current: None,
+    previous: None,
+    *,
+    path: dict_path.DictPath,
+    schema: slice.SliceEntitySchema,
+    implicit_create_operation: bool = False,
+    insert_path: bool = True,
+) -> None:
+    pass
+
+
+@typing.overload
+def merge_attributes(
+    current: dict | None,
+    previous: dict,
+    *,
+    path: dict_path.DictPath,
+    schema: slice.SliceEntitySchema,
+    implicit_create_operation: bool = False,
+    insert_path: bool = True,
+) -> dict:
+    pass
+
+
+@typing.overload
 def merge_attributes(
     current: dict,
     previous: dict | None,
     *,
-    operation: typing.Literal["create", "update", "delete"],
     path: dict_path.DictPath,
     schema: slice.SliceEntitySchema,
+    implicit_create_operation: bool = False,
+    insert_path: bool = True,
 ) -> dict:
+    pass
+
+
+def merge_attributes(
+    current: dict | None,
+    previous: dict | None,
+    *,
+    path: dict_path.DictPath,
+    schema: slice.SliceEntitySchema,
+    implicit_create_operation: bool = False,
+    insert_path: bool = True,
+) -> dict | None:
     """
     Construct a merge of the current and previous attributes, inserting
     all the attributes that were removed, marking them as purged. The
@@ -1188,10 +1251,16 @@ def merge_attributes(
     by the key that leads to it.  Any other type will be considered to be
     a primitive and the value of the current will be kept unmodified.
     """
-    merged = {
-        "operation": operation,
-        "path": str(path),
-    }
+    if current is None and previous is None:
+        return None
+
+    merged: dict[str, object] = {}
+    if insert_path:
+        merged["path"] = str(path)
+
+    operation = resolve_operation(current, previous)
+    if operation != const.SLICE_CREATE or not implicit_create_operation:
+        merged["operation"] = operation
 
     # When the schema is the base of a discriminated union, resolve the
     # concrete sub entity matching this instance so that we merge all of its
@@ -1203,140 +1272,90 @@ def merge_attributes(
     for attribute in schema.all_attributes():
         if attribute.name in ["operation", "path"]:
             continue
-        merged[attribute.name] = current.get(attribute.name)
+        match current, previous:
+            case None, dict():
+                merged[attribute.name] = previous.get(attribute.name)
+            case dict(), _:
+                merged[attribute.name] = current.get(attribute.name)
+            case _:
+                raise ValueError(
+                    f"Current and previous can not both be None!  But it is the case for path {path}"
+                )
 
     # Go over all relations
     for relation in schema.all_relations():
-        cardinality = (relation.cardinality_min, relation.cardinality_max)
-        if cardinality == (1, 1):
-            # The relation is mandatory, we will always have the
-            # current attributes
-            merged[relation.name] = merge_attributes(
-                current=typing.cast(dict, current[relation.name]),
-                previous=(
-                    typing.cast(dict, previous[relation.name])
-                    if previous is not None
-                    else None
-                ),
-                operation=operation,
-                path=path + dict_path.InDict(relation.name),
-                schema=relation.entity,
-            )
-            continue
-
-        if cardinality == (0, 1):
-            # Optional relation, see if the current value is still set, if it
-            # is not, take the previous one and mark is as "delete"
-            current_value = typing.cast(dict | None, current.get(relation.name))
-            previous_value = (
-                typing.cast(dict | None, previous.get(relation.name))
-                if previous is not None
-                else None
-            )
-            item_path = path + dict_path.InDict(relation.name)
-            match (current_value, previous_value):
-                case None, None:
+        if relation.cardinality_max == 1:
+            # Direct relation
+            match current, previous:
+                case None, dict():
+                    merged[relation.name] = merge_attributes(
+                        current=None,
+                        previous=previous.get(relation.name),
+                        path=path + dict_path.InDict(relation.name),
+                        schema=relation.entity,
+                        insert_path=insert_path,
+                        implicit_create_operation=implicit_create_operation,
+                    )
+                case dict(), None:
+                    merged[relation.name] = merge_attributes(
+                        current=current.get(relation.name),
+                        previous=None,
+                        path=path + dict_path.InDict(relation.name),
+                        schema=relation.entity,
+                        insert_path=insert_path,
+                        implicit_create_operation=implicit_create_operation,
+                    )
+                case dict(), dict():
+                    merged[relation.name] = merge_attributes(
+                        current=current.get(relation.name),
+                        previous=previous.get(relation.name),
+                        path=path + dict_path.InDict(relation.name),
+                        schema=relation.entity,
+                        insert_path=insert_path,
+                        implicit_create_operation=implicit_create_operation,
+                    )
+                case _:
                     merged[relation.name] = None
-                case None, dict():
-                    # This is a deletion, recurse it
-                    merged[relation.name] = merge_attributes(
-                        previous_value,
-                        previous_value,
-                        operation=const.SLICE_DELETE,
-                        path=item_path,
-                        schema=relation.entity,
-                    )
-                case dict(), _:
-                    merged[relation.name] = merge_attributes(
-                        current_value,
-                        previous_value,
-                        operation=(
-                            operation
-                            if operation == const.SLICE_DELETE
-                            else (
-                                const.SLICE_CREATE
-                                if previous_value is None
-                                else const.SLICE_UPDATE
-                            )
-                        ),
-                        path=item_path,
-                        schema=relation.entity,
-                    )
-                case _:
-                    raise ValueError()
-            continue
+        else:
+            # Relation, attribute should be a list, and should be merged.  For a
+            # discriminated union, resolve each item to its concrete sub entity so
+            # that the identity includes the discriminator.
+            def identity(value: dict) -> Sequence[tuple[str, object]]:
+                return relation.entity.resolve(value).instance_identity(value)
 
-        # Relation, attribute should be a list, and should be merged.  For a
-        # discriminated union, resolve each item to its concrete sub entity so
-        # that the identity includes the discriminator.
-        def identity(value: dict) -> Sequence[tuple[str, object]]:
-            return relation.entity.resolve(value).instance_identity(value)
+            current_values = {
+                identity(current_value): current_value
+                for current_value in typing.cast(
+                    list[dict], current[relation.name] if current is not None else []
+                )
+            }
+            previous_values = {
+                identity(previous_value): previous_value
+                for previous_value in typing.cast(
+                    list[dict], previous[relation.name] if previous is not None else []
+                )
+            }
 
-        current_values = {
-            identity(current_value): current_value
-            for current_value in typing.cast(list[dict], current[relation.name])
-        }
-        previous_values = {
-            identity(previous_value): previous_value
-            for previous_value in typing.cast(
-                list[dict], previous[relation.name] if previous is not None else []
-            )
-        }
+            # Gather the identities of all the previous and current embedded entities
+            # without losing the order
+            all_identities = list(current_values.keys())
+            for prev_id in previous_values:
+                if prev_id not in current_values:
+                    all_identities.append(prev_id)
 
-        # Gather the identities of all the previous and current embedded entities
-        # without losing the order
-        all_identities = [
-            identity(current_value)
-            for current_value in typing.cast(list[dict], current[relation.name])
-        ]
-        if previous is not None:
-            all_identities.extend(
-                [
-                    key
-                    for previous_value in typing.cast(
-                        list[dict], previous[relation.name]
-                    )
-                    if (key := identity(previous_value)) not in current_values
-                ]
-            )
-
-        merged_relation: list[dict] = []
-        merged[relation.name] = merged_relation
-        for key in all_identities:
-            current_value = current_values.get(key)
-            previous_value = previous_values.get(key)
-            item_path = path + dict_path.KeyedList(relation.name, key)
-            match (current_value, previous_value):
-                case None, dict():
-                    # This is a deletion, recurse it
-                    merged_relation.append(
-                        merge_attributes(
-                            previous_value,
-                            previous_value,
-                            operation=const.SLICE_DELETE,
-                            path=item_path,
-                            schema=relation.entity,
-                        )
-                    )
-                case dict(), _:
-                    merged_relation.append(
-                        merge_attributes(
-                            current_value,
-                            previous_value,
-                            operation=(
-                                operation
-                                if operation == const.SLICE_DELETE
-                                else (
-                                    const.SLICE_CREATE
-                                    if previous_value is None
-                                    else const.SLICE_UPDATE
-                                )
-                            ),
-                            path=item_path,
-                            schema=relation.entity,
-                        )
-                    )
-                case _:
-                    raise ValueError()
+            merged_relation: list[dict] = []
+            merged[relation.name] = merged_relation
+            for key in all_identities:
+                item_path = path + dict_path.KeyedList(relation.name, key)
+                merged_item = merge_attributes(
+                    current_values.get(key),
+                    previous_values.get(key),
+                    path=item_path,
+                    schema=relation.entity,
+                    insert_path=insert_path,
+                    implicit_create_operation=implicit_create_operation,
+                )
+                if merged_item is not None:
+                    merged_relation.append(merged_item)
 
     return merged
