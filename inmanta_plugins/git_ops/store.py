@@ -572,44 +572,6 @@ class SliceStore[S: slice.SliceObjectABC]:
 
         return self.current_slices
 
-    def _preceding_versions(self, name: str, current: Slice) -> list[dict]:
-        """
-        Return the attributes of all the active versions of the slice that
-        precede the current one, sorted from the most to the least recent.
-
-        :param name: The name of the slice.
-        :param current: The slice currently in use for this name.
-        """
-        previous = [
-            s.attributes
-            for s in sorted(
-                self.load_active_slices().get(name, []),
-                key=lambda s: s.version,
-                reverse=True,
-            )
-        ]
-        if current == self.get_latest_slice(name):
-            # The current slice is the latest active one, drop it so we only
-            # keep the versions strictly preceding it.
-            previous = previous[1:]
-        return previous
-
-    def previous_version_attributes(self, name: str) -> dict | None:
-        """
-        Get the attributes of the version immediately preceding the current
-        one, or None if the slice has no previous version.
-
-        Unlike load_previous_slices, the returned attributes are not collapsed
-        together with even older versions: they are the raw content of the
-        immediately preceding version.  This is the reference to use when
-        deciding whether a slice element changed, as deletions carried over
-        from older versions are not part of the immediately preceding content.
-
-        :param name: The name of the slice.
-        """
-        previous = self._preceding_versions(name, self.load_current_slices()[name])
-        return previous[0] if previous else None
-
     def load_previous_slices(self) -> dict[str, Slice]:
         """
         Load all the previous slices (for slices which have an older version
@@ -618,9 +580,22 @@ class SliceStore[S: slice.SliceObjectABC]:
         if self.previous_slices is not None:
             return self.previous_slices
 
+        active_slices = self.load_active_slices()
+
         self.previous_slices: dict[str, Slice] = {}
         for s, current in self.load_current_slices().items():
-            previous = self._preceding_versions(s, current)
+            latest = self.get_latest_slice(s)
+
+            previous = [
+                s.attributes
+                for s in sorted(
+                    active_slices.get(s, []),
+                    key=lambda s: s.version,
+                    reverse=True,
+                )
+            ]
+            if current == latest:
+                previous = previous[1:]
 
             while len(previous) >= 2:
                 p_current = previous[0]
@@ -690,36 +665,14 @@ class SliceStore[S: slice.SliceObjectABC]:
                     schema=self.schema.entity_schema(),
                 )
             else:
-                # Normal merge.  The slice is a creation when it has no
-                # previous version, an update when its content changed compared
-                # to the version immediately preceding it, and is otherwise
-                # left as a creation: it is part of the desired state but
-                # carries no change.
+                # Normal merge
                 new = s not in previous_slices
-                if new:
-                    operation: typing.Literal["create", "update", "delete"] = (
-                        const.SLICE_CREATE
-                    )
-                    baseline = None
-                else:
-                    baseline = self.previous_version_attributes(s)
-                    assert baseline is not None
-                    operation = (
-                        const.SLICE_UPDATE
-                        if content_changed(
-                            current.attributes,
-                            baseline,
-                            schema=self.schema.entity_schema(),
-                        )
-                        else const.SLICE_CREATE
-                    )
                 attributes = merge_attributes(
                     current=current.attributes,
                     previous=None if new else previous_slices[s].attributes,
-                    operation=operation,
+                    operation="create" if new else "update",
                     path=dict_path.NullPath(),
                     schema=self.schema.entity_schema(),
-                    baseline=baseline,
                 )
 
             # Merge the current and previous slices together
@@ -1219,131 +1172,6 @@ def clear_project_paths() -> None:
         store._active_path = None
 
 
-def content_changed(
-    current: dict,
-    previous: dict,
-    *,
-    schema: slice.SliceEntitySchema,
-) -> bool:
-    """
-    Determine whether the content of a slice element changed between the
-    version immediately preceding the current one and the current version.
-
-    The comparison is recursive: an element changed if any of its own
-    (primitive) attributes differ, or if any of its embedded elements was
-    added, removed or itself changed.  The inserted "operation" and "path"
-    metadata are ignored, as they are not part of the user-defined content.
-
-    :param current: The attributes of the element in the current version.
-    :param previous: The attributes of the element in the version immediately
-        preceding the current one.
-    :param schema: The schema of the element being compared.
-    """
-    # When the schema is the base of a discriminated union, resolve the
-    # concrete sub entity matching the current instance.
-    schema = schema.resolve(current)
-
-    # Compare the primitive attributes, ignoring the inserted metadata.
-    for attribute in schema.all_attributes():
-        if attribute.name in ["operation", "path"]:
-            continue
-        if current.get(attribute.name) != previous.get(attribute.name):
-            return True
-
-    # Compare the embedded entities.
-    for relation in schema.all_relations():
-        cardinality = (relation.cardinality_min, relation.cardinality_max)
-        current_value = current.get(relation.name)
-        previous_value = previous.get(relation.name)
-
-        if cardinality == (1, 1):
-            if content_changed(
-                typing.cast(dict, current_value),
-                typing.cast(dict, previous_value),
-                schema=relation.entity,
-            ):
-                return True
-            continue
-
-        if cardinality == (0, 1):
-            if current_value is None and previous_value is None:
-                continue
-            if current_value is None or previous_value is None:
-                # The embedded entity was added or removed.
-                return True
-            if content_changed(
-                typing.cast(dict, current_value),
-                typing.cast(dict, previous_value),
-                schema=relation.entity,
-            ):
-                return True
-            continue
-
-        # Relation towards a list of embedded entities.  Match the current and
-        # previous instances by identity so that a reordering is not considered
-        # a change.  For a discriminated union, the identity includes the
-        # discriminator.
-        def identity(value: dict) -> Sequence[tuple[str, object]]:
-            return relation.entity.resolve(value).instance_identity(value)
-
-        current_items = {
-            identity(item): item
-            for item in typing.cast(list[dict], current_value or [])
-        }
-        previous_items = {
-            identity(item): item
-            for item in typing.cast(list[dict], previous_value or [])
-        }
-        if current_items.keys() != previous_items.keys():
-            # An embedded entity was added or removed.
-            return True
-        for key, current_item in current_items.items():
-            if content_changed(
-                current_item, previous_items[key], schema=relation.entity
-            ):
-                return True
-
-    return False
-
-
-def child_operation(
-    parent_operation: typing.Literal["create", "update", "delete"],
-    current: dict,
-    baseline: dict | None,
-    *,
-    schema: slice.SliceEntitySchema,
-) -> typing.Literal["create", "update", "delete"]:
-    """
-    Decide the operation to attach to an embedded slice element that is present
-    in the current version of a slice.
-
-    - When the parent is being deleted, the element is deleted too.
-    - When the element has no counterpart in the version immediately preceding
-      the current one, it is being created.
-    - Otherwise, the element is only marked as updated if its content actually
-      changed compared to that preceding version, and left as a creation when
-      it didn't (it is part of the desired state but carries no change).
-
-    Elements absent from the current version (removed) are handled separately
-    by the caller and always marked as deleted.
-
-    :param parent_operation: The operation attached to the parent element.
-    :param current: The attributes of the element in the current version.
-    :param baseline: The attributes of the element in the version immediately
-        preceding the current one, or None when the element is new.
-    :param schema: The schema of the element.
-    """
-    if parent_operation == const.SLICE_DELETE:
-        return const.SLICE_DELETE
-    if baseline is None:
-        return const.SLICE_CREATE
-    return (
-        const.SLICE_UPDATE
-        if content_changed(current, baseline, schema=schema)
-        else const.SLICE_CREATE
-    )
-
-
 def merge_attributes(
     current: dict,
     previous: dict | None,
@@ -1351,7 +1179,6 @@ def merge_attributes(
     operation: typing.Literal["create", "update", "delete"],
     path: dict_path.DictPath,
     schema: slice.SliceEntitySchema,
-    baseline: dict | None = None,
 ) -> dict:
     """
     Construct a merge of the current and previous attributes, inserting
@@ -1360,17 +1187,6 @@ def merge_attributes(
     is provided.  We can only merge dicts, identifying any nested dict
     by the key that leads to it.  Any other type will be considered to be
     a primitive and the value of the current will be kept unmodified.
-
-    :param current: The attributes of the element in the current version.
-    :param previous: The previously emitted attributes of the element, used to
-        carry over the embedded entities that were removed (and must keep being
-        purged).  It may collapse more than one older version together.
-    :param operation: The operation to attach to this element.
-    :param path: The path leading to this element from the slice root.
-    :param schema: The schema of the element being merged.
-    :param baseline: The attributes of the element in the version immediately
-        preceding the current one, used to decide whether each embedded element
-        changed.  None when the element is new or being deleted.
     """
     merged = {
         "operation": operation,
@@ -1395,26 +1211,16 @@ def merge_attributes(
         if cardinality == (1, 1):
             # The relation is mandatory, we will always have the
             # current attributes
-            current_value = typing.cast(dict, current[relation.name])
-            previous_value = (
-                typing.cast(dict, previous[relation.name])
-                if previous is not None
-                else None
-            )
-            baseline_value = (
-                typing.cast(dict, baseline[relation.name])
-                if baseline is not None
-                else None
-            )
             merged[relation.name] = merge_attributes(
-                current=current_value,
-                previous=previous_value,
-                operation=child_operation(
-                    operation, current_value, baseline_value, schema=relation.entity
+                current=typing.cast(dict, current[relation.name]),
+                previous=(
+                    typing.cast(dict, previous[relation.name])
+                    if previous is not None
+                    else None
                 ),
+                operation=operation,
                 path=path + dict_path.InDict(relation.name),
                 schema=relation.entity,
-                baseline=baseline_value,
             )
             continue
 
@@ -1425,11 +1231,6 @@ def merge_attributes(
             previous_value = (
                 typing.cast(dict | None, previous.get(relation.name))
                 if previous is not None
-                else None
-            )
-            baseline_value = (
-                typing.cast(dict | None, baseline.get(relation.name))
-                if baseline is not None
                 else None
             )
             item_path = path + dict_path.InDict(relation.name)
@@ -1449,15 +1250,17 @@ def merge_attributes(
                     merged[relation.name] = merge_attributes(
                         current_value,
                         previous_value,
-                        operation=child_operation(
-                            operation,
-                            current_value,
-                            baseline_value,
-                            schema=relation.entity,
+                        operation=(
+                            operation
+                            if operation == const.SLICE_DELETE
+                            else (
+                                const.SLICE_CREATE
+                                if previous_value is None
+                                else const.SLICE_UPDATE
+                            )
                         ),
                         path=item_path,
                         schema=relation.entity,
-                        baseline=baseline_value,
                     )
                 case _:
                     raise ValueError()
@@ -1477,12 +1280,6 @@ def merge_attributes(
             identity(previous_value): previous_value
             for previous_value in typing.cast(
                 list[dict], previous[relation.name] if previous is not None else []
-            )
-        }
-        baseline_values = {
-            identity(baseline_value): baseline_value
-            for baseline_value in typing.cast(
-                list[dict], baseline[relation.name] if baseline is not None else []
             )
         }
 
@@ -1508,7 +1305,6 @@ def merge_attributes(
         for key in all_identities:
             current_value = current_values.get(key)
             previous_value = previous_values.get(key)
-            baseline_value = baseline_values.get(key)
             item_path = path + dict_path.KeyedList(relation.name, key)
             match (current_value, previous_value):
                 case None, dict():
@@ -1527,15 +1323,17 @@ def merge_attributes(
                         merge_attributes(
                             current_value,
                             previous_value,
-                            operation=child_operation(
-                                operation,
-                                current_value,
-                                baseline_value,
-                                schema=relation.entity,
+                            operation=(
+                                operation
+                                if operation == const.SLICE_DELETE
+                                else (
+                                    const.SLICE_CREATE
+                                    if previous_value is None
+                                    else const.SLICE_UPDATE
+                                )
                             ),
                             path=item_path,
                             schema=relation.entity,
-                            baseline=baseline_value,
                         )
                     )
                 case _:
