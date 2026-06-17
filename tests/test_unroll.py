@@ -728,8 +728,9 @@ def test_update_operation_only_on_changed_content(
         "embedded_sequence[name=y]": "create",
     }
 
-    # Third version: remove y, leave everything else untouched.  Only the slice
-    # itself changed (it lost an element); x stays a creation.
+    # Third version: remove y, leave everything else untouched.
+    # The slice is updated;
+    # x remains changed as it has multiple different versions
     a_v3 = copy.deepcopy(a_v2)
     a_v3["embedded_sequence"] = a_v3["embedded_sequence"][:1]
     (store.active_path / "a@v3.json").write_text(json.dumps(a_v3))
@@ -737,7 +738,7 @@ def test_update_operation_only_on_changed_content(
         ".": "update",
         "embedded_required": "create",
         "embedded_optional": "create",
-        "embedded_sequence[name=x]": "create",
+        "embedded_sequence[name=x]": "update",
         "embedded_sequence[name=y]": "delete",
     }
 
@@ -832,13 +833,13 @@ def test_update_operation_ignores_deletions_carried_from_older_versions(
 
     # v3: only the root changes.  The deletion of "drop" is carried forward
     # (still emitted as a delete), but embedded_required did not change since
-    # v2 and must stay a creation, not an update.
+    # v2 and must stay an update.
     a_v3 = copy.deepcopy(a_v2)
     a_v3["description"] = "v3"
     (store.active_path / "a@v3.json").write_text(json.dumps(a_v3))
     assert _operations_by_path(project, store.name) == {
         ".": "update",
-        "embedded_required": "create",
+        "embedded_required": "update",
         "embedded_required.recursive_slice[name=keep]": "create",
         "embedded_required.recursive_slice[name=drop]": "delete",
     }
