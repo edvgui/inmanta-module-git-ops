@@ -46,6 +46,20 @@ SLICE_STORE_REGISTRY: dict[str, "SliceStore[slice.SliceObjectABC]"] = {}
 LOGGER = logging.getLogger(__name__)
 
 
+def filter_path[T: object](slice: T) -> T:
+    """
+    Helper function to recusively strip the path from the attributes loaded from
+    any slice file, as it won't be correct (pydantic default is "." for everything).
+    """
+    match slice:
+        case dict():
+            return {k: filter_path(v) for k, v in slice.items() if k != "path"}
+        case list():
+            return [filter_path(v) for v in slice]
+        case _:
+            return slice
+
+
 @dataclass(frozen=True, kw_only=True)
 class SliceFile[S: slice.SliceObjectABC]:
     """
@@ -89,13 +103,12 @@ class SliceFile[S: slice.SliceObjectABC]:
             # The slice has been deleted
             return {}
 
-        with slice.exclude_model_values():
-            # Load default values
-            return (
-                pydantic.TypeAdapter(self.schema)
-                .validate_python(attributes)
-                .model_dump(mode="json")
-            )
+        # Load default values (for model-only values too)
+        return filter_path(
+            pydantic.TypeAdapter(self.schema)
+            .validate_python(attributes)
+            .model_dump(mode="json")
+        )
 
     def write_raw(self, attributes: dict) -> None:
         """
@@ -273,7 +286,7 @@ class SliceStore[S: slice.SliceObjectABC]:
 
         self._active_path: pathlib.Path | None = None
         self.active_slice_files: dict[str, list[SliceFile]] | None = None
-        self.active_slices: dict[tuple[str, int], Slice] | None = None
+        self.active_slices: dict[str, list[Slice]] | None = None
 
         # This dict contains all the resolved slices to be used in the
         # current compile
@@ -607,12 +620,9 @@ class SliceStore[S: slice.SliceObjectABC]:
                         p_previous,
                         path=dict_path.NullPath(),
                         schema=self.schema.entity_schema(),
-                        # Don't insert the path yet and keep create operation implicit
-                        # to avoid trigerring a diff when there is not one
-                        # Other operations can be shown as we want to make sure that the
-                        # last merge knows some past change might not be settled yet
+                        # Don't insert the path yet to avoid trigerring a diff when there
+                        # is not one
                         insert_path=False,
-                        implicit_create_operation=True,
                     ),
                     *previous[2:],
                 ]
@@ -1202,7 +1212,6 @@ def merge_attributes(
     *,
     path: dict_path.DictPath,
     schema: slice.SliceEntitySchema,
-    implicit_create_operation: bool = False,
     insert_path: bool = True,
 ) -> None:
     pass
@@ -1215,7 +1224,6 @@ def merge_attributes(
     *,
     path: dict_path.DictPath,
     schema: slice.SliceEntitySchema,
-    implicit_create_operation: bool = False,
     insert_path: bool = True,
 ) -> dict:
     pass
@@ -1228,7 +1236,6 @@ def merge_attributes(
     *,
     path: dict_path.DictPath,
     schema: slice.SliceEntitySchema,
-    implicit_create_operation: bool = False,
     insert_path: bool = True,
 ) -> dict:
     pass
@@ -1240,7 +1247,6 @@ def merge_attributes(
     *,
     path: dict_path.DictPath,
     schema: slice.SliceEntitySchema,
-    implicit_create_operation: bool = False,
     insert_path: bool = True,
 ) -> dict | None:
     """
@@ -1254,13 +1260,9 @@ def merge_attributes(
     if current is None and previous is None:
         return None
 
-    merged: dict[str, object] = {}
+    merged: dict[str, object] = {"operation": resolve_operation(current, previous)}
     if insert_path:
         merged["path"] = str(path)
-
-    operation = resolve_operation(current, previous)
-    if operation != const.SLICE_CREATE or not implicit_create_operation:
-        merged["operation"] = operation
 
     # When the schema is the base of a discriminated union, resolve the
     # concrete sub entity matching this instance so that we merge all of its
@@ -1294,7 +1296,6 @@ def merge_attributes(
                         path=path + dict_path.InDict(relation.name),
                         schema=relation.entity,
                         insert_path=insert_path,
-                        implicit_create_operation=implicit_create_operation,
                     )
                 case dict(), None:
                     merged[relation.name] = merge_attributes(
@@ -1303,7 +1304,6 @@ def merge_attributes(
                         path=path + dict_path.InDict(relation.name),
                         schema=relation.entity,
                         insert_path=insert_path,
-                        implicit_create_operation=implicit_create_operation,
                     )
                 case dict(), dict():
                     merged[relation.name] = merge_attributes(
@@ -1312,7 +1312,6 @@ def merge_attributes(
                         path=path + dict_path.InDict(relation.name),
                         schema=relation.entity,
                         insert_path=insert_path,
-                        implicit_create_operation=implicit_create_operation,
                     )
                 case _:
                     merged[relation.name] = None
@@ -1353,7 +1352,6 @@ def merge_attributes(
                     path=item_path,
                     schema=relation.entity,
                     insert_path=insert_path,
-                    implicit_create_operation=implicit_create_operation,
                 )
                 if merged_item is not None:
                     merged_relation.append(merged_item)
