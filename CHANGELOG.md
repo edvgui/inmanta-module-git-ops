@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.7.0 - ?
+## v0.7.0 - 2026-06-20
 
 - Add git_ops::processors::get_template_value processor to convert template references to the rendered template.
 - Add automatic inmanta.plugins.Context injection to the attribute_processor decorator, passed as the first positional argument like the native plugin decorator does.
