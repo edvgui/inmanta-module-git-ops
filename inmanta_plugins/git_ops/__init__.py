@@ -18,11 +18,12 @@ Contact: edvgui@gmail.com
 
 import functools
 import importlib
+import inspect
 import typing
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 
-from inmanta.plugins import Plugin, plugin
+from inmanta.plugins import Context, Plugin, plugin
 from inmanta.util import dict_path
 from inmanta_git_ops import const
 
@@ -211,7 +212,31 @@ class AttributeProcessorFunction[**P, R](typing.Protocol):
         pass
 
 
-def attribute_processor[F: AttributeProcessorFunction](func: F) -> F:
+class ContextAttributeProcessorFunction[**P, R](typing.Protocol):
+    """
+    Define the interface that processor functions requesting the compiler
+    context must implement.  The context is passed automatically by the compiler
+    as the first positional argument.
+    """
+
+    def __call__(
+        self,
+        context: Context,
+        store_name: str,
+        name: str,
+        path: str,
+        previous_value: R | None,
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ) -> R:
+        pass
+
+
+def attribute_processor[
+    F: AttributeProcessorFunction | ContextAttributeProcessorFunction
+](
+    func: F,
+) -> F:
     """
     Register a function as an attribute processor.  Attribute processors are
     called during update compile to process the value of a slice attribute and
@@ -233,8 +258,44 @@ def attribute_processor[F: AttributeProcessorFunction](func: F) -> F:
             else:
                 return None
 
+    Similarly to the native plugin decorator, a processor can request the
+    compiler context by annotating an argument with ``inmanta.plugins.Context``.
+    When present, it is automatically passed by the compiler and must be the
+    first positional argument:
+
+    .. code-block:: python
+
+        @attribute_processor
+        def upper(
+            context: Context,
+            store_name: str,
+            name: str,
+            path: str,
+            previous_value: str | None,
+        ) -> str | None:
+            ...
+
     :param func: The processor function to register and wrap.
     """
+    # Detect whether the processor requests the compiler context.  Mirroring the
+    # native plugin decorator, the context is injected by the compiler and, for
+    # processors, is only supported as the first positional argument.
+    arg_spec = inspect.getfullargspec(func)
+    expects_context = (
+        bool(arg_spec.args) and arg_spec.annotations.get(arg_spec.args[0]) is Context
+    )
+    misplaced_context = [
+        arg
+        for arg in (*arg_spec.args[1:], *arg_spec.kwonlyargs)
+        if arg_spec.annotations.get(arg) is Context
+    ]
+    if misplaced_context:
+        func_name = getattr(func, "__name__", repr(func))
+        raise ValueError(
+            f"Processor {func_name!r} declares a Context argument "
+            f"({misplaced_context[0]!r}) that is not the first positional "
+            f"argument.  The Context must be the first positional argument."
+        )
 
     # Make sure that the inmanta compiler sees this wrapped function the same way
     # as the plugin it wraps, with its annotations and defaults
@@ -244,10 +305,6 @@ def attribute_processor[F: AttributeProcessorFunction](func: F) -> F:
     )
     def wrapped(
         self: Plugin,
-        store_name: str,
-        name: str,
-        path: str,
-        previous_value: object,
         *args: object,
         **kwargs: object,
     ) -> object:
@@ -255,13 +312,27 @@ def attribute_processor[F: AttributeProcessorFunction](func: F) -> F:
         Wrapper function, getting the value from the slice and, if this is an
         update compile, also call the processor function and return its result.
 
-        :param store_name: The name of the slice store in which the slice is.
-        :param name: The name of the slice.
-        :param path: The path within the slice's attributes towards the value that
-            should be updated.
-        :param previous_value: The value that is currently in the slice for the
-            given attribute.
+        The positional arguments are, in order: an optional Context object
+        (injected by the compiler when the processor requests it), the slice
+        store name, the slice name, the path within the slice's attributes
+        towards the value that should be updated, and the value that is
+        currently in the slice for that attribute (recomputed here and ignored
+        if provided).
         """
+        # The compiler injects the optional Context as the first positional
+        # argument, shifting the slice-related arguments by one position.
+        offset = 1 if expects_context else 0
+        store_name = typing.cast(str, args[offset])
+        name = typing.cast(str, args[offset + 1])
+        path = typing.cast(str, args[offset + 2])
+
+        # The arguments forwarded as-is to the processor: the optional context
+        # followed by the slice store name, slice name and path.  The recomputed
+        # previous_value sits right after them (at index offset + 3) and is
+        # dropped here, any further positional argument is forwarded.
+        forward_prefix = args[: offset + 3]
+        extra_args = args[offset + 4 :]
+
         # Get the value that is currently set in the slice
         previous_value = get_slice_attribute(store_name, name, path)
 
@@ -277,17 +348,19 @@ def attribute_processor[F: AttributeProcessorFunction](func: F) -> F:
             # We can not modify a deleted slice, stick to the previous value
             return previous_value
 
-        # Call the processor and set the new value in the slice
+        # Call the processor and set the new value in the slice.  The processor
+        # is called dynamically: depending on `expects_context`, the forwarded
+        # arguments either start with the injected context or directly with the
+        # slice store name.
+        processor: typing.Callable[..., object] = func
         return update_slice_attribute(
             store_name,
             name,
             path,
-            func(
-                store_name,
-                name,
-                path,
+            processor(
+                *forward_prefix,
                 previous_value,
-                *args,
+                *extra_args,
                 **kwargs,
             ),
         )

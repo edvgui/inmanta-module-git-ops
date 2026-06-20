@@ -1,7 +1,8 @@
 # Changelog
 
-## v0.6.1 - ?
+## v0.7.0 - ?
 
+- Add automatic inmanta.plugins.Context injection to the attribute_processor decorator, passed as the first positional argument like the native plugin decorator does.
 
 ## v0.6.0 - 2026-06-17
 
