@@ -16,12 +16,17 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 
+import pathlib
+
 import pytest
 import yaml
 from inmanta_plugins.example.slices import recursive
+from inmanta_plugins.example.slices.recursive import EmbeddedSlice, Slice
 from pytest_inmanta.plugin import Project
 
-from inmanta_plugins.git_ops import const, processors
+from inmanta.plugins import Context
+from inmanta_plugins.git_ops import attribute_processor, const, processors
+from inmanta_plugins.git_ops.store import SliceStore
 
 
 def test_fs(project: Project, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -93,3 +98,69 @@ def test_fs(project: Project, monkeypatch: pytest.MonkeyPatch) -> None:
                 ),
             )()
         ) == {1, 2}
+
+
+def test_get_template_value(
+    project: Project, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Define a basic store
+    store = SliceStore(
+        name="test_template",
+        folder="file://" + str(tmp_path / "test"),
+        schema=Slice,
+    )
+
+    # A jinja template that the processor should render, using a value passed
+    # to it as keyword argument
+    template = tmp_path / "greeting.j2"
+    template.write_text("Hello {{ who }}")
+
+    model = """
+        import git_ops
+        import git_ops::processors
+
+        for slice in git_ops::unroll_slices("test_template"):
+            git_ops::processors::get_template_value(
+                slice["store_name"],
+                slice["name"],
+                "description",
+                who="world",
+            )
+        end
+    """
+
+    # Add one slice whose description points to the template
+    s1_obj = Slice(
+        name="a",
+        description="file://" + str(template),
+        embedded_required=EmbeddedSlice(
+            name="aa",
+        ),
+    )
+    s1 = store.source_path / "s1.yaml"
+    s1.parent.mkdir(parents=True, exist_ok=True)
+    s1.write_text(yaml.safe_dump(s1_obj.model_dump(mode="json")))
+
+    # The processor needs the compiler context to render the template, it should
+    # be passed automatically as first positional argument
+    with monkeypatch.context() as ctx:
+        ctx.setattr(const, "COMPILE_MODE", const.COMPILE_UPDATE)
+        project.compile(model, no_dedent=False)
+
+    # The template path should have been rendered and saved back in the slice
+    assert yaml.safe_load(s1.read_text())["description"] == "Hello world"
+
+
+def test_context_must_be_first_positional() -> None:
+    # A Context argument is only supported as the first positional argument
+    with pytest.raises(ValueError, match="first positional argument"):
+
+        @attribute_processor
+        def misplaced_context(
+            store_name: str,
+            name: str,
+            path: str,
+            context: Context,
+            previous_value: object | None = None,
+        ) -> object:
+            return previous_value
