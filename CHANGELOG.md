@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.7.1 - ?
+
+
 ## v0.7.0 - 2026-06-20
 
 - Add git_ops::processors::get_template_value processor to convert template references to the rendered template.
