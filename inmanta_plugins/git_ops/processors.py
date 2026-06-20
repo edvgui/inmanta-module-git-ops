@@ -20,7 +20,9 @@ import itertools
 import typing
 from collections.abc import Collection, Iterator, Mapping
 
-from inmanta.plugins import ModelType, plugin
+import inmanta_plugins.config
+
+from inmanta.plugins import Context, ModelType, plugin
 from inmanta.util import dict_path
 from inmanta_plugins.git_ops import Slice, attribute_processor, store
 
@@ -178,3 +180,39 @@ def simple_value(
         return value
     else:
         return previous_value
+
+
+@attribute_processor
+def get_template_value(
+    context: Context,
+    store_name: str,
+    name: str,
+    path: str,
+    previous_value: object | None = None,
+    **kwargs: object,
+) -> object:
+    """
+    Attribute processor counterpart of the config::get_template_value plugin.
+    The value currently stored in the slice is treated as a potential template
+    path: if it resolves to a jinja (`.j2`) file, the template is rendered (with
+    access to the extra kwargs and to all the compiler plugins as filters) and
+    the result is saved back into the slice.  Otherwise the value is kept as is.
+
+    The compiler context is required to render the template and is passed
+    automatically as the first positional argument.
+
+    :param context: The compiler context, automatically injected.
+    :param store_name: The name of the slice store in which the slice is.
+    :param name: The name of the slice.
+    :param path: The path within the slice's attributes towards the value that
+        should be processed.
+    :param previous_value: The value currently stored in the slice for the given
+        attribute.
+    :param kwargs: Any value that should be accessible to the template.
+    """
+    return inmanta_plugins.config.get_template_value(
+        context,
+        {"value": previous_value},
+        "value",
+        **kwargs,
+    )
