@@ -195,6 +195,39 @@ def get_attribute(
     )
 
 
+def get_key_fields(
+    entity: Entity,
+    keys: Sequence[str],
+    *,
+    parent_relation: EntityRelation | None,
+) -> Sequence[EntityField]:
+    """
+    Collect the fields that make up the index of an entity, in a stable order:
+    the parent relation first (when set), followed by the key attributes in the
+    exact order in which they are declared on the slice schema.
+
+    Iterating ``entity.all_fields()`` directly is not stable: it returns a set,
+    so the resulting index field order is arbitrary and changes from one
+    generation to the next.
+
+    :param entity: The entity whose key fields to collect.
+    :param keys: The names of the key attributes, in the desired order.
+    :param parent_relation: When set, the parent relation to prepend to the
+        index fields.
+    """
+    fields_by_name = {field.name: field for field in entity.all_fields()}
+
+    key_fields: dict[str, EntityField] = {}
+    if parent_relation is not None:
+        key_fields[parent_relation.name] = parent_relation
+
+    for key in keys:
+        if key in fields_by_name:
+            key_fields[key] = fields_by_name[key]
+
+    return list(key_fields.values())
+
+
 def get_relation(
     schema: slice.SliceEntityRelationSchema,
     *,
@@ -255,17 +288,15 @@ def get_relation(
                 )
                 builder.add_module_element(helper)
 
-                helper_key_fields: dict[str, EntityField] = {
-                    parent_relation.name: parent_relation,
-                }
-                for field in helper.all_fields():
-                    if field.name in sub_schema.keys:
-                        helper_key_fields[field.name] = field
                 builder.add_module_element(
                     Index(
                         path=helper.path,
                         entity=helper,
-                        fields=helper_key_fields.values(),
+                        fields=get_key_fields(
+                            helper,
+                            sub_schema.keys,
+                            parent_relation=parent_relation,
+                        ),
                     )
                 )
                 builder.add_module_element(
@@ -303,20 +334,15 @@ def get_relation(
 
         builder.add_module_element(embedded_entity)
 
-        key_fields: dict[str, EntityField] = {}
-
-        if parent_relation is not None:
-            key_fields[parent_relation.name] = parent_relation
-
-        for field in embedded_entity.all_fields():
-            if field.name in schema.entity.keys:
-                key_fields[field.name] = field
-
         builder.add_module_element(
             Index(
                 path=embedded_entity.path,
                 entity=embedded_entity,
-                fields=key_fields.values(),
+                fields=get_key_fields(
+                    embedded_entity,
+                    schema.entity.keys,
+                    parent_relation=parent_relation,
+                ),
             )
         )
 
@@ -431,20 +457,15 @@ def get_entity(
     # keys are carried by its concrete sub entities, which define their own
     # indexes, so no index is generated for the base itself.
     if (slice_root or parent_relation is not None) and schema.discriminator is None:
-        key_fields: dict[str, EntityField] = {}
-
-        if parent_relation is not None:
-            key_fields[parent_relation.name] = parent_relation
-
-        for field in entity.all_fields():
-            if field.name in schema.keys:
-                key_fields[field.name] = field
-
         builder.add_module_element(
             Index(
                 path=entity.path,
                 entity=entity,
-                fields=key_fields.values(),
+                fields=get_key_fields(
+                    entity,
+                    schema.keys,
+                    parent_relation=parent_relation,
+                ),
             )
         )
 
