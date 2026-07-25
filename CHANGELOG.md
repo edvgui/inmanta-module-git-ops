@@ -2,6 +2,8 @@
 
 ## v0.7.1 - ?
 
+- Fix unstable ordering of index fields in the generated model: the generator now emits index fields in the order the keys are declared on the slice schema, instead of the arbitrary order of the entity's field set.
+
 
 ## v0.7.0 - 2026-06-20
 
