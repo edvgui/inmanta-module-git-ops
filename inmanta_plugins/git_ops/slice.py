@@ -261,9 +261,11 @@ def discriminated_union(
         return None
 
     union_type = typing.get_args(resolved)[0]
+    # A union with a single member (e.g. the first of a family of types that
+    # will grow later) is not a typing union, pydantic accepts it anyway.
     members = [
         member
-        for member in typing.get_args(union_type)
+        for member in typing.get_args(union_type) or (union_type,)
         if inspect.isclass(member) and issubclass(member, EmbeddedSliceObjectABC)
     ]
     if not members:
