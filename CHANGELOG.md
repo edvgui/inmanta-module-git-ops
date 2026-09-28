@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.7.2 - ?
+## v0.7.2 - 2026-09-28
 
 - Support discriminated unions with a single member (`typing.Annotated[A, pydantic.Field(discriminator="type")]`), to declare a polymorphic relation before its second member exists.
 
