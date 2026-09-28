@@ -235,3 +235,32 @@ def test_scaffold_discriminated_union() -> None:
         # the placeholder
         "broken": const.SLICE_PLACEHOLDER,
     }
+
+
+def test_single_member_discriminated_union() -> None:
+    """
+    A discriminated union with a single member is not a typing union, but it
+    is still accepted by pydantic, and it should be modeled like any other
+    union: a base entity carrying the discriminator, extended by the member.
+    """
+
+    class A(slice.EmbeddedSliceObjectABC):
+        type: typing.Literal["a"] = "a"
+        value: str
+
+    OnlyA = typing.Annotated[A, pydantic.Field(discriminator="type")]
+
+    class Root(slice.SliceObjectABC):
+        name: str
+        items: Sequence[OnlyA] = pydantic.Field(default_factory=list)
+
+    # The entity schema can only be built for classes of an inmanta module
+    for cls in (A, Root):
+        cls.__module__ = "inmanta_plugins.example.slices.single"
+
+    root = Root(name="root", items=[{"type": "a", "value": "x"}])
+    assert root.items == [A(value="x")]
+
+    items = next(r for r in Root.entity_schema().all_relations() if r.name == "items")
+    assert items.entity.discriminator == "type"
+    assert [sub.name for sub in items.entity.sub_entities] == ["A"]
