@@ -2,6 +2,7 @@
 
 ## v0.7.3 - ?
 
+- Report compile failures of the git-ops project commands without the python traceback of the cli.
 
 ## v0.7.2 - 2026-09-28
 

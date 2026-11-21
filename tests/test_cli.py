@@ -77,6 +77,7 @@ def test_project_slice_commands(tmp_path: pathlib.Path) -> None:
         )
         if expect_failure:
             assert result.returncode != 0, result.stdout + result.stderr
+            assert "Traceback" not in result.stderr, result.stderr
         else:
             assert result.returncode == 0, result.stdout + result.stderr
         if args[0] == "slice":
@@ -207,3 +208,7 @@ def test_project_slice_commands(tmp_path: pathlib.Path) -> None:
         json.loads(git_ops("slice", "list", "--store", "simple", "--format", "json"))
         == []
     )
+
+    # A failing compile is reported without the traceback of the cli
+    (project_path / "main.cf").write_text("x = y")
+    git_ops("update", expect_failure=True)
