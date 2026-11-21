@@ -22,6 +22,7 @@ import logging
 import os
 import pathlib
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -33,7 +34,7 @@ import texttable
 from inmanta.const import ENVIRON_FORCE_TTY
 from inmanta.module import ModuleV2, Project
 from inmanta_git_ops import const
-from inmanta_plugins.git_ops.store import SLICE_STORE_REGISTRY
+from inmanta_plugins.git_ops.store import SLICE_STORE_REGISTRY, parse_slice_pattern
 
 LOGGER = logging.getLogger(__name__)
 
@@ -226,6 +227,7 @@ def run_compile(
     inmanta_compile_arg: Sequence[str],
     *,
     compile_mode: str,
+    env: Mapping[str, str] | None = None,
 ) -> None:
     """
     Run a compile on the current project, in a subprocess, with the given
@@ -234,10 +236,11 @@ def run_compile(
     :param inmanta_compile_arg: Additional arguments to pass to the inmanta
         compile command.
     :param compile_mode: The compile mode the compile should run in.
+    :param env: Additional environment variables to pass to the compile.
     """
     process = subprocess.run(
         inmanta_compile_command(inmanta_compile_arg),
-        env={**os.environ, const.COMPILE_MODE_ENV_VAR: compile_mode},
+        env={**os.environ, const.COMPILE_MODE_ENV_VAR: compile_mode, **(env or {})},
     )
     if process.returncode != 0:
         # The compiler already reported the failure, don't add a traceback
@@ -415,20 +418,43 @@ def sync(inmanta_compile_arg: list[str]) -> None:
     run_compile(inmanta_compile_arg, compile_mode=const.COMPILE_SYNC)
 
 
+def validate_slice_patterns(
+    ctx: click.Context, param: click.Parameter, value: tuple[str, ...]
+) -> tuple[str, ...]:
+    """
+    Click callback, making sure all the given slice patterns are valid.
+    """
+    for pattern in value:
+        try:
+            parse_slice_pattern(pattern)
+        except ValueError as e:
+            raise click.BadParameter(str(e))
+    return value
+
+
 @project.command("prune")
+@click.argument("slices", nargs=-1, callback=validate_slice_patterns)
 @click.option(
     "--inmanta-compile-arg",
     multiple=True,
     help="Additional arguments to pass to the inmanta compile command.",
 )
-def prune(inmanta_compile_arg: list[str]) -> None:
-    """
+def prune(slices: tuple[str, ...], inmanta_compile_arg: list[str]) -> None:
+    r"""
     Prune the slice store.
 
     Remove from the slice store all active slices which have a more recent version
-    or which are deleted.
+    or which are deleted.  When SLICES are given, only prune the slices matching
+    them, each one being a NAME (in any store) or STORE/NAME, where both the store
+    and the name can be glob patterns.  Use a backslash to escape a /, a \ or a
+    glob character in the store or the name.  Quote the patterns so that the
+    shell doesn't expand them.
     """
-    run_compile(inmanta_compile_arg, compile_mode=const.COMPILE_PRUNE)
+    run_compile(
+        inmanta_compile_arg,
+        compile_mode=const.COMPILE_PRUNE,
+        env={const.PRUNE_SLICES_ENV_VAR: shlex.join(slices)},
+    )
 
 
 @project.group("slice")

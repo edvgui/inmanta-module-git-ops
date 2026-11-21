@@ -17,6 +17,7 @@ Contact: edvgui@gmail.com
 """
 
 import collections
+import fnmatch
 import itertools
 import json
 import logging
@@ -859,16 +860,30 @@ class SliceStore[S: slice.SliceObjectABC]:
             )
             slice_file.write(slice.attributes)
 
-    def prune(self) -> None:
+    def prune(self) -> set[str]:
         """
         Remove all the slices from the store that are not in use.
         These are the slices which have a more recent version, or which are deleted.
+        If const.PRUNE_SLICES is not empty, only the slices it designates are pruned.
+        Return the patterns of const.PRUNE_SLICES which matched a slice of this store.
         """
         if const.COMPILE_MODE != const.COMPILE_PRUNE:
             raise RuntimeError("Slices can only be pruned during a prune compile")
 
+        patterns = {p: parse_slice_pattern(p) for p in const.PRUNE_SLICES}
+        matched: set[str] = set()
         active_slice_files = self.load_active_slice_files()
-        for slice_files in active_slice_files.values():
+        for name, slice_files in active_slice_files.items():
+            matching = {
+                pattern
+                for pattern, (store_pattern, name_pattern) in patterns.items()
+                if fnmatch.fnmatchcase(self.name, store_pattern)
+                and fnmatch.fnmatchcase(name, name_pattern)
+            }
+            if patterns and not matching:
+                continue
+            matched |= matching
+
             latest_slice_file = max(slice_files, key=lambda s: s.version or 0)
             for slice_file in slice_files:
                 if slice_file != latest_slice_file:
@@ -878,6 +893,8 @@ class SliceStore[S: slice.SliceObjectABC]:
             if latest_slice_file.read_raw() == {}:
                 # The latest slice file is deleted, it should be pruned too
                 latest_slice_file.delete()
+
+        return matched
 
     def update(self) -> None:
         """
@@ -1098,6 +1115,41 @@ def get_store(store_name: str) -> SliceStore[slice.SliceObjectABC]:
     return SLICE_STORE_REGISTRY[store_name]
 
 
+def parse_slice_pattern(pattern: str) -> tuple[str, str]:
+    r"""
+    Parse a slice pattern, either <name> or <store>/<name>, into a glob
+    pattern for the store name ("*" when not specified) and one for the
+    slice name.  A backslash escapes the next character, to allow a /, a \
+    or a literal glob character in the store or the name.
+
+    :param pattern: The slice pattern to parse.
+    """
+    parts = [""]
+    escaped = False
+    for char in pattern:
+        if escaped:
+            # Wrap the glob characters in brackets to make fnmatch match them literally
+            parts[-1] += f"[{char}]" if char in "*?[" else char
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == "/":
+            parts.append("")
+        else:
+            parts[-1] += char
+
+    match parts:
+        case [name] if not escaped:
+            return "*", name
+        case [store, name] if not escaped:
+            return store, name
+        case _:
+            raise ValueError(
+                f"Invalid slice pattern {pattern!r}, expected <name> or "
+                "<store>/<name> (use \\/ for a / in the store or the name)"
+            )
+
+
 def write_command_output(result: object) -> None:
     """
     Write the result of a slice command to the output file designated by
@@ -1160,16 +1212,22 @@ def persist_store() -> None:
     At the end of the compile, write all slices back to file and clear
     the in-memory cache.
     """
+    pruned_patterns: set[str] = set()
     for store in SLICE_STORE_REGISTRY.values():
         if const.COMPILE_MODE == const.COMPILE_UPDATE:
             store.update()
         elif const.COMPILE_MODE == const.COMPILE_SYNC:
             store.sync()
         elif const.COMPILE_MODE == const.COMPILE_PRUNE:
-            store.prune()
+            pruned_patterns |= store.prune()
         else:
             pass
         store.clear()
+
+    if const.COMPILE_MODE == const.COMPILE_PRUNE:
+        for pattern in const.PRUNE_SLICES:
+            if pattern not in pruned_patterns:
+                LOGGER.warning("No slice matches the prune pattern %r", pattern)
 
 
 @finalizer
