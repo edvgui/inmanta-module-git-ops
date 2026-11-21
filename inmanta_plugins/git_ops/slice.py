@@ -70,8 +70,10 @@ def exclude_model_values() -> Generator[None, None, None]:
     not saved to the slice files (as they have no additional values).
     """
     token = SLICE_UPDATE.set(True)
-    yield
-    SLICE_UPDATE.reset(token)
+    try:
+        yield
+    finally:
+        SLICE_UPDATE.reset(token)
 
 
 def get_optional_type(python_type: type[object]) -> type[object]:

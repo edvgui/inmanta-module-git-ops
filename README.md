@@ -75,10 +75,10 @@ def test_fs(git_ops_project: GitOpsProject) -> None:
 
     # Write the slice to disk and trigger an update + sync compile
     assert git_ops_project.write_slice(slice1).version == 1
-    assert len(git_ops_project.get_instance(slice1).directories) == 0
+    assert len(git_ops_project.get_instance(slice1).content) == 0
 
     # Mutate the slice, write again, and check the new version
-    slice1.slice.directories = [fs.Folder(name="a"), fs.Folder(name="b")]
+    slice1.slice.content = [fs.Folder(name="a"), fs.Folder(name="b")]
     assert git_ops_project.write_slice(slice1).version == 2
 
     # Remove the slice

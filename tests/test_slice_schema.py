@@ -20,6 +20,7 @@ import typing
 from collections.abc import Sequence
 
 import pydantic
+import pytest
 from inmanta_plugins.example.slices.fs import File, Folder, RootFolder
 from inmanta_plugins.example.slices.recursive import EmbeddedSlice, Slice
 from inmanta_plugins.example.slices.simple import Slice as SimpleSlice
@@ -264,3 +265,12 @@ def test_single_member_discriminated_union() -> None:
     items = next(r for r in Root.entity_schema().all_relations() if r.name == "items")
     assert items.entity.discriminator == "type"
     assert [sub.name for sub in items.entity.sub_entities] == ["A"]
+
+
+def test_exclude_model_values_reset_on_error() -> None:
+    # An error raised inside the context must not leave the model-only
+    # attributes excluded for the rest of the process
+    with pytest.raises(RuntimeError):
+        with slice.exclude_model_values():
+            raise RuntimeError()
+    assert not slice.slice_update(None)
