@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.8.1 - ?
+
+
 ## v0.8.0 - 2026-11-21
 
 - Report compile failures of the git-ops project commands without the python traceback of the cli.
