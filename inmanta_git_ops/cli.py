@@ -235,11 +235,13 @@ def run_compile(
         compile command.
     :param compile_mode: The compile mode the compile should run in.
     """
-    subprocess.run(
+    process = subprocess.run(
         inmanta_compile_command(inmanta_compile_arg),
-        check=True,
         env={**os.environ, const.COMPILE_MODE_ENV_VAR: compile_mode},
     )
+    if process.returncode != 0:
+        # The compiler already reported the failure, don't add a traceback
+        raise click.ClickException("The compile failed (see logs above)")
 
 
 # Environment variables, defined by inmanta-core, with which the user can
