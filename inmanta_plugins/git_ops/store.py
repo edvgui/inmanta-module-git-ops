@@ -863,12 +863,18 @@ class SliceStore[S: slice.SliceObjectABC]:
         """
         Remove all the slices from the store that are not in use.
         These are the slices which have a more recent version, or which are deleted.
+        If const.PRUNE_SLICES is not empty, only the slices it designates are pruned.
         """
         if const.COMPILE_MODE != const.COMPILE_PRUNE:
             raise RuntimeError("Slices can only be pruned during a prune compile")
 
         active_slice_files = self.load_active_slice_files()
-        for slice_files in active_slice_files.values():
+        for name, slice_files in active_slice_files.items():
+            if const.PRUNE_SLICES and not {name, f"{self.name}/{name}"}.intersection(
+                const.PRUNE_SLICES
+            ):
+                continue
+
             latest_slice_file = max(slice_files, key=lambda s: s.version or 0)
             for slice_file in slice_files:
                 if slice_file != latest_slice_file:

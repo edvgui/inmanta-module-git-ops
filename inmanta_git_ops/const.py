@@ -16,6 +16,7 @@ limitations under the License.
 Contact: edvgui@gmail.com
 """
 
+import json
 import os
 import typing
 
@@ -66,6 +67,11 @@ SLICE_NAME: str | None = os.getenv(SLICE_NAME_ENV_VAR)
 
 SLICE_EXTENSION_ENV_VAR = "INMANTA_GIT_OPS_SLICE_EXTENSION"
 SLICE_EXTENSION: str = os.getenv(SLICE_EXTENSION_ENV_VAR, "json")
+
+# Slices the prune compile is restricted to, as a json list of slice names
+# or <store>/<name> identifiers.  All the slices are pruned when empty.
+PRUNE_SLICES_ENV_VAR = "INMANTA_GIT_OPS_PRUNE_SLICES"
+PRUNE_SLICES: list[str] = json.loads(os.getenv(PRUNE_SLICES_ENV_VAR, "[]"))
 
 # File in which the result of a slice command should be written by the
 # finalizer executing it, so that the cli process can read it back.

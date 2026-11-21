@@ -207,3 +207,21 @@ def test_project_slice_commands(tmp_path: pathlib.Path) -> None:
         json.loads(git_ops("slice", "list", "--store", "simple", "--format", "json"))
         == []
     )
+
+    # Sync the deletion: the active store now holds the deleted version of
+    # the slice next to its previous version
+    empty_source.unlink()
+    git_ops("sync")
+    fs_active = project_path / "git_ops" / "active" / "fs"
+    assert sorted(p.name for p in fs_active.glob("*@v*")) == [
+        "test-folder@v1.json",
+        "test-folder@v2.json",
+    ]
+
+    # Pruning other slices leaves this one untouched
+    git_ops("prune", "missing", "simple/test-folder")
+    assert len(list(fs_active.glob("*@v*"))) == 2
+
+    # Pruning the slice, by name or by store/name, removes all its versions
+    git_ops("prune", "fs/missing", "test-folder")
+    assert list(fs_active.glob("*@v*")) == []

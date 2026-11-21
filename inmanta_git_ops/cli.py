@@ -226,6 +226,7 @@ def run_compile(
     inmanta_compile_arg: Sequence[str],
     *,
     compile_mode: str,
+    env: Mapping[str, str] | None = None,
 ) -> None:
     """
     Run a compile on the current project, in a subprocess, with the given
@@ -234,11 +235,12 @@ def run_compile(
     :param inmanta_compile_arg: Additional arguments to pass to the inmanta
         compile command.
     :param compile_mode: The compile mode the compile should run in.
+    :param env: Additional environment variables to pass to the compile.
     """
     subprocess.run(
         inmanta_compile_command(inmanta_compile_arg),
         check=True,
-        env={**os.environ, const.COMPILE_MODE_ENV_VAR: compile_mode},
+        env={**os.environ, const.COMPILE_MODE_ENV_VAR: compile_mode, **(env or {})},
     )
 
 
@@ -414,19 +416,25 @@ def sync(inmanta_compile_arg: list[str]) -> None:
 
 
 @project.command("prune")
+@click.argument("slices", nargs=-1)
 @click.option(
     "--inmanta-compile-arg",
     multiple=True,
     help="Additional arguments to pass to the inmanta compile command.",
 )
-def prune(inmanta_compile_arg: list[str]) -> None:
+def prune(slices: tuple[str, ...], inmanta_compile_arg: list[str]) -> None:
     """
     Prune the slice store.
 
     Remove from the slice store all active slices which have a more recent version
-    or which are deleted.
+    or which are deleted.  When SLICES are given, only prune these slices, each one
+    designated by its name (in any store) or by STORE/NAME.
     """
-    run_compile(inmanta_compile_arg, compile_mode=const.COMPILE_PRUNE)
+    run_compile(
+        inmanta_compile_arg,
+        compile_mode=const.COMPILE_PRUNE,
+        env={const.PRUNE_SLICES_ENV_VAR: json.dumps(slices)},
+    )
 
 
 @project.group("slice")
