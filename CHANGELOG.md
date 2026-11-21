@@ -1,7 +1,8 @@
 # Changelog
 
-## v0.7.3 - ?
+## v0.8.0 - ?
 
+- Accept slice names or <store>/<name> identifiers as arguments of `git-ops project prune`, to only prune these slices.
 
 ## v0.7.2 - 2026-09-28
 
