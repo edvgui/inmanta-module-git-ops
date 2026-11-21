@@ -111,16 +111,14 @@ class SliceFile[S: slice.SliceObjectABC]:
             .model_dump(mode="json")
         )
 
-    def write_raw(self, attributes: dict) -> None:
+    def dump_raw(self, attributes: dict) -> str:
         """
-        Write the given raw attributes to the slice file, preserving the
-        file's extension, without applying any schema validation.  This
-        is useful for migrations, where the attributes may not yet
-        conform to the current schema.
+        Serialize the given raw attributes in the format matching the file's
+        extension, without applying any schema validation.
         """
         if self.extension == "json":
             try:
-                return self.path.write_text(json.dumps(attributes, indent=2))
+                return json.dumps(attributes, indent=2)
             except TypeError as e:
                 raise ValueError(
                     f"Attributes can not be serialized: {attributes}"
@@ -128,13 +126,22 @@ class SliceFile[S: slice.SliceObjectABC]:
 
         if self.extension in ["yaml", "yml"]:
             try:
-                return self.path.write_text(yaml.safe_dump(attributes, sort_keys=False))
+                return yaml.safe_dump(attributes, sort_keys=False)
             except yaml.error.YAMLError as e:
                 raise ValueError(
                     f"Attributes can not be serialized: {attributes}"
                 ) from e
 
         raise ValueError(f"Unsupported slice file extension: {self.extension}")
+
+    def write_raw(self, attributes: dict) -> None:
+        """
+        Write the given raw attributes to the slice file, preserving the
+        file's extension, without applying any schema validation.  This
+        is useful for migrations, where the attributes may not yet
+        conform to the current schema.
+        """
+        self.path.write_text(self.dump_raw(attributes))
 
     def write(self, attributes: dict) -> None:
         """
@@ -525,6 +532,13 @@ class SliceStore[S: slice.SliceObjectABC]:
 
             # Load the source slice and compare it to the latest slice
             attributes = slice_file.read()
+            if latest.deleted and attributes != {}:
+                raise ValueError(
+                    f"Slice {name} in store {self.name} is still being deleted "
+                    f"(v{latest.version}), it can not be re-created until its deletion "
+                    f"has been exported and pruned (git-ops project prune "
+                    f"'{self.name}/{name}').  Source file: {slice_file.path}"
+                )
             if attributes == latest.attributes:
                 # Same attributes, same version, same slice
                 self.source_slices[name] = latest
@@ -748,11 +762,6 @@ class SliceStore[S: slice.SliceObjectABC]:
 
         :param name: The name of the migration to apply.
         """
-        if name not in self.migrations:
-            raise ValueError(
-                "No migration with name %s registered for store %s", name, self.name
-            )
-
         LOGGER.debug(f"Applying migration {name} for store {self.name}")
         migration_func = self.migrations[name]
 
@@ -762,7 +771,7 @@ class SliceStore[S: slice.SliceObjectABC]:
             self.load_source_slice_files().values(),
             *self.load_active_slice_files().values(),
         )
-        updated_slices: list[tuple[SliceFile, dict]] = []
+        updated_slices: list[tuple[SliceFile, str]] = []
         for slice_file in slice_files:
             raw_attributes = slice_file.read_raw()
             if raw_attributes == {}:
@@ -777,18 +786,20 @@ class SliceStore[S: slice.SliceObjectABC]:
                 raw_attributes,
             )
             try:
-                migrated_attributes = migration_func(raw_attributes)
+                # Serialize the result too, so that no file is written if the
+                # result of the migration can not be saved for any slice
+                migrated_content = slice_file.dump_raw(migration_func(raw_attributes))
             except Exception as e:
                 raise RuntimeError(
                     f"Error occurred while applying migration {name} to slice {slice_file.path}: {e}"
                 ) from e
 
-            updated_slices.append((slice_file, migrated_attributes))
+            updated_slices.append((slice_file, migrated_content))
 
         # Then save the migrated attributes for all the slices, now that we know the migration works on all of them
-        for slice_file, migrated_attributes in updated_slices:
+        for slice_file, migrated_content in updated_slices:
             try:
-                slice_file.write_raw(migrated_attributes)
+                slice_file.path.write_text(migrated_content)
             except Exception as e:
                 raise RuntimeError(
                     f"Error occurred while writing migrated attributes for slice {slice_file.path} during migration {name}: {e}"
@@ -1239,6 +1250,7 @@ def clear_project_paths() -> None:
     for store in SLICE_STORE_REGISTRY.values():
         store._source_path = None
         store._active_path = None
+        store._migration_state_path = None
 
 
 def resolve_operation(

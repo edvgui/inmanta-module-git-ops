@@ -4,6 +4,11 @@
 
 - Report compile failures of the git-ops project commands without the python traceback of the cli.
 - Accept slice patterns (`<name>` or `<store>/<name>`, with glob support) as arguments of `git-ops project prune` and as the `slices` parameter of `git_ops_project.prune()`, to only prune the matching slices.
+- Fail with an explicit error, instead of a `KeyError`, when a source slice is re-created while its deletion is not pruned yet.
+- Leave all slice files untouched when the result of a migration can not be written for one of the slices.
+- Fix the `schema_path` description in the json schema of the git-ops config, which was a list instead of a string.
+- Fix model-only attributes missing from the slices after a failed slice write, for the rest of the python process.
+- Fix the migration state file of the first compiled project being reused when compiling another project in the same python process.
 
 ## v0.7.2 - 2026-09-28
 

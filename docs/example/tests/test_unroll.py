@@ -19,6 +19,7 @@ Contact: edvgui@gmail.com
 import pytest
 from inmanta_plugins.example.slices import fs, recursive, simple
 
+from inmanta.ast import ExternalException
 from inmanta_plugins.git_ops import const
 from pytest_inmanta_git_ops.project import GitOpsProject
 
@@ -101,12 +102,21 @@ def test_fs(git_ops_project: GitOpsProject, caplog: pytest.LogCaptureFixture) ->
     assert git_ops_project.remove_slice(slice1).emit_slice(fs.STORE.name).deleted
     assert len(git_ops_project.get_instance(slice1).content) == 2
 
+    # The slice can not be re-created until its deletion is pruned
+    with pytest.raises(ExternalException) as exc:
+        git_ops_project.write_slice(slice1)
+    assert "is still being deleted" in str(exc.value.__cause__)
+    slice1.get_source().delete()
+
     # Prune after delete
     git_ops_project.prune()
     assert len(slice1.get_versions()) == 0
 
     with pytest.raises(LookupError):
         git_ops_project.get_instance(slice1)
+
+    # Once pruned, the slice can be re-created
+    assert git_ops_project.write_slice(slice1).version == 1
 
 
 def test_recursive(git_ops_project: GitOpsProject) -> None:

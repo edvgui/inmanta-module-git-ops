@@ -34,7 +34,7 @@ class SliceStoreConfig(pydantic.BaseModel):
         default=None,
         description=(
             "The path to the schema file for this slice.  "
-            "When this is set, the schema will be updated every time the slices of this type are updated.",
+            "When this is set, the schema will be updated every time the slices of this type are updated."
         ),
     )
 

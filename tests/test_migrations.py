@@ -244,3 +244,63 @@ def test_migrations_initial_compile(project: Project, tmp_path: pathlib.Path) ->
         store.migrations.keys()
     )
     assert store.pending_migrations() == []
+
+
+def test_migration_serialization_failure(
+    project: Project, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    A migration whose result can not be written for one of the slice files
+    must not modify any slice file, and must stay pending.
+    """
+    store = SliceStore(
+        name="test_migration_serialization_failure",
+        folder="file://" + str(tmp_path / "test"),
+        schema=Slice,
+    )
+
+    model = """
+        import git_ops
+        git_ops::unroll_slices("test_migration_serialization_failure")
+    """
+    project.compile(model)
+
+    # Activate one slice, then change its source so that the source and
+    # the active versions differ
+    s1 = store.source_path / "s1.json"
+    s1.parent.mkdir(parents=True, exist_ok=True)
+    s1.write_text(
+        json.dumps(
+            Slice(name="a", embedded_required=EmbeddedSlice(name="aa")).model_dump(
+                mode="json"
+            )
+        )
+    )
+    with monkeypatch.context() as ctx:
+        ctx.setattr(const, "COMPILE_MODE", const.COMPILE_UPDATE)
+        project.compile(model, no_dedent=False)
+        ctx.setattr(const, "COMPILE_MODE", const.COMPILE_SYNC)
+        project.compile(model, no_dedent=False)
+
+    s1.write_text(json.dumps({**json.loads(s1.read_text()), "name": "b"}))
+    s1_v1 = store.active_path / "s1@v1.json"
+    source_content = s1.read_text()
+    active_content = s1_v1.read_text()
+
+    # The source version (processed first) can be migrated, the active
+    # version can not be serialized
+    @store.migration("001_broken")
+    def broken(attrs: dict) -> dict:
+        if attrs["name"] == "a":
+            return {**attrs, "description": {"not", "json"}}
+        return {**attrs, "description": "migrated"}
+
+    with pytest.raises(ExternalException) as exc:
+        with monkeypatch.context() as ctx:
+            ctx.setattr(const, "COMPILE_MODE", const.COMPILE_UPDATE)
+            project.compile(model, no_dedent=False)
+
+    assert "001_broken" in str(exc.value.__cause__)
+    assert s1.read_text() == source_content
+    assert s1_v1.read_text() == active_content
+    assert store.pending_migrations() == ["001_broken"]
