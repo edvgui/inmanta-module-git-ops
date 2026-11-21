@@ -21,7 +21,32 @@ import os
 import pathlib
 import subprocess
 
+import pytest
 import yaml
+
+from inmanta_plugins.git_ops.store import parse_slice_pattern
+
+
+@pytest.mark.parametrize(
+    ("pattern", "expected"),
+    [
+        ("name", ("*", "name")),
+        ("store/name", ("store", "name")),
+        ("st*/na?e", ("st*", "na?e")),
+        ("na\\/me", ("*", "na/me")),
+        ("st\\/ore/na\\\\me", ("st/ore", "na\\me")),
+        ("na\\*me\\?\\[", ("*", "na[*]me[?][[]")),
+        ("", ("*", "")),
+    ],
+)
+def test_parse_slice_pattern(pattern: str, expected: tuple[str, str]) -> None:
+    assert parse_slice_pattern(pattern) == expected
+
+
+@pytest.mark.parametrize("pattern", ["a/b/c", "name\\"])
+def test_parse_invalid_slice_pattern(pattern: str) -> None:
+    with pytest.raises(ValueError):
+        parse_slice_pattern(pattern)
 
 
 def test_basics() -> None:
@@ -219,12 +244,24 @@ def test_project_slice_commands(tmp_path: pathlib.Path) -> None:
         "test-folder@v2.json",
     ]
 
-    # Pruning other slices leaves this one untouched
-    git_ops("prune", "missing", "simple/test-folder")
+    # An invalid slice pattern is rejected
+    git_ops("prune", "fs/test-folder/extra", expect_failure=True)
     assert len(list(fs_active.glob("*@v*"))) == 2
 
-    # Pruning the slice, by name or by store/name, removes all its versions
-    git_ops("prune", "fs/missing", "test-folder")
+    # Pruning other slices leaves this one untouched, escaped characters
+    # are part of the slice name
+    git_ops(
+        "prune",
+        "missing slice",
+        "simple/test-folder",
+        "fs\\/test-folder",
+        "fs/test-\\*",
+    )
+    assert len(list(fs_active.glob("*@v*"))) == 2
+
+    # Pruning the slice, with glob patterns on the store and the name,
+    # removes all its versions
+    git_ops("prune", "fs/missing", "f?/test-*")
     assert list(fs_active.glob("*@v*")) == []
 
     # A failing compile is reported without the traceback of the cli

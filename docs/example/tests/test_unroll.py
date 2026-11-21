@@ -23,7 +23,7 @@ from inmanta_plugins.git_ops import const
 from pytest_inmanta_git_ops.project import GitOpsProject
 
 
-def test_fs(git_ops_project: GitOpsProject) -> None:
+def test_fs(git_ops_project: GitOpsProject, caplog: pytest.LogCaptureFixture) -> None:
     git_ops_project.load_stores("import example::slices::fs::unroll")
 
     assert git_ops_project.stores is not None
@@ -60,9 +60,18 @@ def test_fs(git_ops_project: GitOpsProject) -> None:
         == "content[type=folder][name=a]"
     )
 
-    # Prune version after update
-    git_ops_project.prune()
+    # Prune other slices, the versions of this slice are kept, and the
+    # patterns which match no slice are reported
+    git_ops_project.prune(slices=["other/*", "missing"])
+    assert len(slice1.get_versions()) == 2
+    assert "No slice matches the prune pattern 'other/*'" in caplog.text
+    assert "No slice matches the prune pattern 'missing'" in caplog.text
+
+    # Prune version after update, the pattern matched a slice
+    caplog.clear()
+    git_ops_project.prune(slices=[f"{fs.STORE.name}/*"])
     assert len(slice1.get_versions()) == 1
+    assert "No slice matches" not in caplog.text
 
     # Remove a folder
     slice1.slice.content = [

@@ -22,6 +22,7 @@ import logging
 import os
 import pathlib
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -33,7 +34,7 @@ import texttable
 from inmanta.const import ENVIRON_FORCE_TTY
 from inmanta.module import ModuleV2, Project
 from inmanta_git_ops import const
-from inmanta_plugins.git_ops.store import SLICE_STORE_REGISTRY
+from inmanta_plugins.git_ops.store import SLICE_STORE_REGISTRY, parse_slice_pattern
 
 LOGGER = logging.getLogger(__name__)
 
@@ -417,25 +418,42 @@ def sync(inmanta_compile_arg: list[str]) -> None:
     run_compile(inmanta_compile_arg, compile_mode=const.COMPILE_SYNC)
 
 
+def validate_slice_patterns(
+    ctx: click.Context, param: click.Parameter, value: tuple[str, ...]
+) -> tuple[str, ...]:
+    """
+    Click callback, making sure all the given slice patterns are valid.
+    """
+    for pattern in value:
+        try:
+            parse_slice_pattern(pattern)
+        except ValueError as e:
+            raise click.BadParameter(str(e))
+    return value
+
+
 @project.command("prune")
-@click.argument("slices", nargs=-1)
+@click.argument("slices", nargs=-1, callback=validate_slice_patterns)
 @click.option(
     "--inmanta-compile-arg",
     multiple=True,
     help="Additional arguments to pass to the inmanta compile command.",
 )
 def prune(slices: tuple[str, ...], inmanta_compile_arg: list[str]) -> None:
-    """
+    r"""
     Prune the slice store.
 
     Remove from the slice store all active slices which have a more recent version
-    or which are deleted.  When SLICES are given, only prune these slices, each one
-    designated by its name (in any store) or by STORE/NAME.
+    or which are deleted.  When SLICES are given, only prune the slices matching
+    them, each one being a NAME (in any store) or STORE/NAME, where both the store
+    and the name can be glob patterns.  Use a backslash to escape a /, a \ or a
+    glob character in the store or the name.  Quote the patterns so that the
+    shell doesn't expand them.
     """
     run_compile(
         inmanta_compile_arg,
         compile_mode=const.COMPILE_PRUNE,
-        env={const.PRUNE_SLICES_ENV_VAR: json.dumps(slices)},
+        env={const.PRUNE_SLICES_ENV_VAR: shlex.join(slices)},
     )
 
 

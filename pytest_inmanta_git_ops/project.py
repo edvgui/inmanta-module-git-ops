@@ -18,6 +18,7 @@ Contact: edvgui@gmail.com
 
 import typing
 import uuid
+from collections.abc import Sequence
 
 import pytest
 from pytest_inmanta.plugin import Project
@@ -260,12 +261,18 @@ class GitOpsProject:
             ctx.setattr(const, "COMPILE_MODE", const.COMPILE_EXPORT)
             self.project.compile(self._model(model))
 
-    def prune(self, model: str | None = None) -> None:
+    def prune(self, model: str | None = None, slices: Sequence[str] = ()) -> None:
         """
         Run a pruning compile on the current project.  Don't unroll any
         service, but cleanup any old version of slices present in the
         project.
+
+        :param model: The model to compile, defaults to the model of the stores.
+        :param slices: Only prune the slices matching these patterns, like the
+            arguments of the `git-ops project prune` command.  All the slices
+            are pruned when empty.
         """
         with self.monkeypatch.context() as ctx:
             ctx.setattr(const, "COMPILE_MODE", const.COMPILE_PRUNE)
+            ctx.setattr(const, "PRUNE_SLICES", list(slices))
             self.project.compile(self._model(model))
