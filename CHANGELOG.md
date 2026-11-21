@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.8.0 - ?
+## v0.8.0 - 2026-11-21
 
 - Report compile failures of the git-ops project commands without the python traceback of the cli.
 - Accept slice patterns (`<name>` or `<store>/<name>`, with glob support) as arguments of `git-ops project prune` and as the `slices` parameter of `git_ops_project.prune()`, to only prune the matching slices.
