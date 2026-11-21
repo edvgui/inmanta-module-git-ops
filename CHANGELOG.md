@@ -2,6 +2,7 @@
 
 ## v0.8.0 - ?
 
+- Report compile failures of the git-ops project commands without the python traceback of the cli.
 - Accept slice names or <store>/<name> identifiers as arguments of `git-ops project prune`, to only prune these slices.
 
 ## v0.7.2 - 2026-09-28
